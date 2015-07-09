@@ -4,5 +4,5 @@ std::function<void (const char*)> AdvancedAssert::_loggingFunc;
 
 void AdvancedAssert::setLoggingFunc(const std::function<void (const char*)>& func)
 {
-
+	_loggingFunc = func;
 }

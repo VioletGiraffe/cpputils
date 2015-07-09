@@ -39,8 +39,9 @@ private:
 #endif
 
 // This macro checks the condition and prints failed assertions to the log both in debug and release. Actual assert is only triggered in debug.
-#define assert_r(condition) if (!(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__);} assert_debug_only(condition);
-#define assert_message_r(condition, message) if (!(condition)) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__);} assert_debug_only(condition);
-#define assert_unconditional_r(message) AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(false);
-#define assert_and_return_r(condition, returnValue) if (!(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__); assert_debug_only(condition); return returnValue;}
-#define assert_and_return_unconditional_r(message, returnValue) AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(false); return returnValue;
+#define assert_r(condition) {if (!(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__);} assert_debug_only(condition);}
+#define assert_message_r(condition, message) {if (!(condition)) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__);} assert_debug_only(condition);}
+#define assert_unconditional_r(message) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(false);}
+#define assert_and_return_r(condition, returnValue) {if (!(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__); assert_debug_only(condition); return returnValue;}}
+#define assert_and_return_unconditional_r(message, returnValue) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(false); return returnValue;}
+#define assert_and_return_message_r(condition, message, returnValue) {if (!(condition)) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(condition); return returnValue;}}
