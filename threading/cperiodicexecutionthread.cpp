@@ -1,5 +1,6 @@
 #include "cperiodicexecutionthread.h"
 #include "compiler/compiler_warnings_control.h"
+#include "assert/advanced_assert.h"
 
 #ifdef QT_VERSION
 	DISABLE_COMPILER_WARNINGS
@@ -9,9 +10,6 @@
 #else
 	#define DEBUG_LOG(X)
 #endif
-
-
-#include <assert.h>
 
 CPeriodicExecutionThread::CPeriodicExecutionThread(unsigned int period_ms, const std::string& threadName, const std::function<void()>& workload /*= std::function<void ()>()*/) :
 	_workload(workload),
@@ -31,7 +29,7 @@ void CPeriodicExecutionThread::setWorkload(const std::function<void()>& workload
 	if (!_thread.joinable())
 		_workload = workload;
 	else
-		assert(!"The thread has already started");
+		assert_unconditional_r("The thread has already started");
 }
 
 void CPeriodicExecutionThread::start(const std::function<void()>& workload /*= std::function<void ()>()*/)
@@ -44,7 +42,7 @@ void CPeriodicExecutionThread::start(const std::function<void()>& workload /*= s
 		_thread = std::thread(&CPeriodicExecutionThread::threadFunc, this);
 	}
 	else
-		assert(!"The thread has already started");
+		assert_unconditional_r("The thread has already started");
 }
 
 void CPeriodicExecutionThread::terminate()

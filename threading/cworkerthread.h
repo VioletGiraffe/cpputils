@@ -1,8 +1,8 @@
 #pragma once
 
 #include "cconsumerblockingqueue.h"
+#include "../assert/advanced_assert.h"
 
-#include <assert.h>
 #include <atomic>
 #include <string>
 #include <thread>
@@ -44,8 +44,7 @@ public:
 			}
 			catch (std::exception& e)
 			{
-				assert(!"Exception caught in CWorkerThread::stop()");
-				(void)e;
+				assert_unconditional_r((std::string("Exception caught in CWorkerThread::stop(): ") + e.what()).c_str());
 			}
 		}
 	}

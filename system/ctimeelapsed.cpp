@@ -1,5 +1,5 @@
 #include "ctimeelapsed.h"
-#include <assert.h>
+#include "assert/advanced_assert.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -36,14 +36,14 @@ void CTimePrivate::captureTime()
 	BOOL succ = QueryPerformanceFrequency(&_freq);
 	if (!succ)
 	{
-		assert(!"Error calling QueryPerformanceFrequency");
+		assert_unconditional_r("Error calling QueryPerformanceFrequency");
 		return;
 	}
 
 	succ = QueryPerformanceCounter(&_time);
 	if (!succ)
 	{
-		assert(!"Error calling QueryPerformanceCounter");
+		assert_unconditional_r("Error calling QueryPerformanceCounter");
 		return;
 	}
 
@@ -53,12 +53,12 @@ void CTimePrivate::captureTime()
 // Returns difference between two time stamps in milliseconds
 int CTimePrivate::operator-(const CTimePrivate& start) const
 {
-	assert(_bIsValid == bool("Invalid end time sample"));
-	assert(start._bIsValid == bool("Invalid start time sample"));
+	assert_message_r(_bIsValid, "Invalid end time sample");
+	assert_message_r(start._bIsValid, "Invalid start time sample");
 
 	if (_freq.QuadPart != start._freq.QuadPart)
 	{
-		assert(!"Samples were taken at different frequencies");
+		assert_unconditional_r("Samples were taken at different frequencies");
 		return -1;
 	}
 
@@ -130,13 +130,13 @@ void CTimePrivate::captureTime()
 #else
 	m_bIsValid = clock_gettime(CLOCK_MONOTONIC, &m_tspec) == 0;
 #endif
-	assert(m_bIsValid == bool("Error calling clock_gettime"));
+	assert_message_r(m_bIsValid, "Error calling clock_gettime");
 }
 
 // Сохраняет текущее время в этот экземпляр CTime
 int CTimePrivate::operator -(const CTimePrivate& start) const
 {
-	assert(m_bIsValid == bool("Invalid time sample"));
+	assert_message_r(m_bIsValid, "Invalid time sample");
 
 	int msec = -1;
 	if (m_bIsValid)
@@ -184,14 +184,14 @@ void CTimeElapsed::start()
 
 void CTimeElapsed::pause()
 {
-	assert(!_paused);
+	assert_r(!_paused);
 	_elapsedBeforePause = elapsed();
 	_paused = true;
 }
 
 void CTimeElapsed::resume()
 {
-	assert(_paused);
+	assert_r(_paused);
 	_paused = false;
 	_time->captureTime();
 }
