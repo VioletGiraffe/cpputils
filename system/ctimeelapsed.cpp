@@ -27,6 +27,8 @@ private:
 
 CTimePrivate::CTimePrivate () : _bIsValid(false)
 {
+	memset(&_freq, 0, sizeof _freq);
+	memset(&_time, 0, sizeof _time);
 }
 
 // Stores current time stamp
