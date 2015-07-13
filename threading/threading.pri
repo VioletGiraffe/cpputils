@@ -5,4 +5,5 @@ HEADERS += \
     $$PWD/cworkerthread.h
 
 SOURCES += \
-    $$PWD/cperiodicexecutionthread.cpp
+    $$PWD/cperiodicexecutionthread.cpp \
+    $$PWD/cworkerthread.cpp
