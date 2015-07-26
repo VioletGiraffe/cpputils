@@ -17,9 +17,9 @@
 #elif defined __GNUC__ || defined __GNUG__
 
 #define COMPILER_PRAGMA(text) _Pragma(#text) // Stringifying the text to wrap it into quotes
-#define STORE_COMPILER_WARNINGS COMPILER_PRAGMA(gcc diagnostic push)
-#define RESTORE_COMPILER_WARNINGS COMPILER_PRAGMA(gcc diagnostic pop)
-#define DISABLE_SPECIFIC_COMPILER_WARNING(warning) COMPILER_PRAGMA(gcc diagnostic ignored warning)
+#define STORE_COMPILER_WARNINGS COMPILER_PRAGMA(GCC diagnostic push)
+#define RESTORE_COMPILER_WARNINGS COMPILER_PRAGMA(GCC diagnostic pop)
+#define DISABLE_SPECIFIC_COMPILER_WARNING(warning) COMPILER_PRAGMA(GCC diagnostic ignored warning)
 
 #else
 
@@ -27,6 +27,8 @@
 #define DISABLE_SPECIFIC_COMPILER_WARNING(warning)
 #define STORE_COMPILER_WARNINGS
 #define RESTORE_COMPILER_WARNINGS
+
+#pragma message ("Unknown compiler")
 
 #endif
 
@@ -39,14 +41,11 @@
 #elif defined __clang__ || defined __GNUC__ || defined __GNUG__
 
 #define DISABLE_COMPILER_WARNINGS \
-    STORE_COMPILER_WARNINGS \
-    DISABLE_SPECIFIC_COMPILER_WARNING("-Wshorten-64-to-32") \
-    DISABLE_SPECIFIC_COMPILER_WARNING("-Wall") \
-    DISABLE_SPECIFIC_COMPILER_WARNING("-Wunknown-pragmas") \
-    DISABLE_SPECIFIC_COMPILER_WARNING("-Weverything")
-
-
-#define RESTORE_COMPILER_WARNINGS COMPILER_PRAGMA(clang diagnostic pop)
+	STORE_COMPILER_WARNINGS \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Wshorten-64-to-32") \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Wall") \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Wunknown-pragmas") \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Weverything")
 
 #else
 
