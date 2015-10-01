@@ -7,6 +7,11 @@ CInterruptableThread::CInterruptableThread(const std::string& threadName, ExecBe
 {
 }
 
+CInterruptableThread::~CInterruptableThread()
+{
+	interrupt();
+}
+
 bool CInterruptableThread::exec(const std::function<void ()>& executable)
 {
 	if (!executable)
@@ -32,6 +37,7 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 	return true;
 }
 
+// Signals the thread to stop and waits until the thread has exited via join()
 void CInterruptableThread::interrupt()
 {
 	if (_thread.joinable())
