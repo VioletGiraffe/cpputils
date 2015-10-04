@@ -17,6 +17,8 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 	if (!executable)
 		return false;
 
+	_terminate = false;
+
 	if (_running)
 	{
 		if (_behavior == SkipIfRunning)
@@ -44,7 +46,6 @@ void CInterruptableThread::interrupt()
 	{
 		_terminate = true;
 		_thread.join();
-		_terminate = false;
 	}
 }
 
