@@ -17,8 +17,6 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 	if (!executable)
 		return false;
 
-	_terminate = false;
-
 	if (_running)
 	{
 		if (_behavior == SkipIfRunning)
@@ -29,6 +27,7 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 
 	// Without the _thread.join() call, the subsequent _thread assignment fails. Why?
 	interrupt();
+	_terminate = false;
 
 	_thread = std::thread([this, executable](){
 		_running = true;
@@ -46,6 +45,7 @@ void CInterruptableThread::interrupt()
 	{
 		_terminate = true;
 		_thread.join();
+		_running = false;
 	}
 }
 
