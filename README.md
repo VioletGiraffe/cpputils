@@ -1,2 +1,2 @@
 # cpputils
-A collection of unrelated C++ utility classes
+A collection of various C++ utility classes
