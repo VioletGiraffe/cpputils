@@ -8,7 +8,7 @@ This library contains various C++ classes and snippets I've found myself in need
 
 A collection of assert-like macros with two key differences from a regular C `assert`:
 - the code you pass to the advanced assert macros (ending with `_r`) is executed in release build as well as debug;
-- when assertion fails, an message can be printed or otherwise processed using a callback function that you supply.
+- when assertion fails, a message can be printed or otherwise processed using a callback function that you supply.
 
 Like  regular `assert`, the `assert*_r` macros *will not*  trigger the `abort()` function or display an error message box when assertion fails in release build.
 You can set your error message handler with `AdvancedAssert::setLoggingFunc(const std::function<void (const char*)>& func)`.
@@ -20,6 +20,48 @@ So, the "advanced" assert macros:
 
 I only use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function.
 
+Additionally, the `assert_and_return*` macros let you significantly simplify and conmpactify routine error-checking code. Compare
+
+```cpp
+bool doWork()
+{
+    if (!f1())
+    {
+        std::cout << "Error calling f1()";
+        return false;
+    }
+
+    if (!f2())
+    {
+        std::cout << "Error calling f2()";
+        return false;
+    }
+
+    if (!f3())
+    {
+        std::cout << "Error calling f3()";
+        return false;
+    }
+    
+    return true;
+}
+```
+    
+to the functionally identical code using the assert macros:
+
+```cpp
+#include "assert/advanced_assert.h"
+
+bool doWork()
+{
+    assert_and_return (f1(), false);
+    assert_and_return (f2(), false);
+    assert_and_return (f3(), false);
+    
+    return true;
+}
+```
+
 **WARNING**: The error logging callback is a static data member of the `AdvancedAssert` class. Make sure you understand the implications for projects with dynamic libraries (.so / .dll / .dylib etc.).
 
 ## compiler/compiler_warnings_control.h
@@ -28,17 +70,18 @@ This header contains macros for suppressing compiler warnings for the specific p
 
 The most common use case:
 
-    #include "compiler/compiler_warnings_control.h"
+```cpp
+#include "compiler/compiler_warnings_control.h"
     
-    // The following header files belong to a 3rd-party library.
-    // These headers produce various compiler warnings.
-    // So I simply wrap them in warning suppression macros:
-    
-    DISABLE_COMPILER_WARNINGS
-    #include "libusb.h"
-    #include "zlib.h"
-    RESTORE_COMPILER_WARNINGS
+// The following header files belong to a 3rd-party library.
+// These headers produce various compiler warnings.
+// So I simply wrap them in warning suppression macros:
 
+DISABLE_COMPILER_WARNINGS
+#include "libusb.h"
+#include "zlib.h"
+RESTORE_COMPILER_WARNINGS
+```
 
 ## system/ctimeelapsed.h
 
