@@ -20,7 +20,7 @@ So, the "advanced" assert macros:
 
 I only use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function.
 
-Additionally, the `assert_and_return*` macros let you significantly simplify and conmpactify routine error-checking code. Compare
+Additionally, the `assert_and_return*` macros let you significantly simplify and compactify routine error-checking code. Compare
 
 ```cpp
 bool doWork()
@@ -47,16 +47,16 @@ bool doWork()
 }
 ```
     
-to the functionally identical code using the assert macros:
+to the functionally identical code using the assert_r macros:
 
 ```cpp
 #include "assert/advanced_assert.h"
 
 bool doWork()
 {
-    assert_and_return (f1(), false);
-    assert_and_return (f2(), false);
-    assert_and_return (f3(), false);
+    assert_and_return_r(f1(), false);
+    assert_and_return_r(f2(), false);
+    assert_and_return_r(f3(), false);
     
     return true;
 }
