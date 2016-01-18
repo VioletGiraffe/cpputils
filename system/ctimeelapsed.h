@@ -1,9 +1,7 @@
-#ifndef CTIMEELAPSED_H
-#define CTIMEELAPSED_H
+#pragma once
 
-#include <memory>
+#include <chrono>
 
-class CTimePrivate;
 class CTimeElapsed
 {
 public:
@@ -12,16 +10,18 @@ public:
 	CTimeElapsed(const CTimeElapsed&) = delete;
 	CTimeElapsed& operator=(const CTimeElapsed&) = delete;
 
-	void     start();
-	void     pause();
-	void     resume();
-	int      elapsed() const;
+	void start();
+	void pause();
+	void resume();
+	// Returns the time since the last start() call, minus however long the pause(s) had lasted, in the specified std::chrono duration units
+	template <typename StdChronoDurationUnit = std::chrono::milliseconds>
+	uint64_t elapsed() const {
+		return (std::chrono::duration_cast<StdChronoDurationUnit>((std::chrono::high_resolution_clock::now() - _startTimeStamp) + _pausedFor)).count();
+	}
 
 private:
-	std::shared_ptr<CTimePrivate> _time;
-	int                           _elapsedBeforePause;
-	bool                          _paused;
-
+	std::chrono::high_resolution_clock::time_point _startTimeStamp;
+	std::chrono::nanoseconds _pausedFor {0};
+	std::chrono::high_resolution_clock::time_point _pauseTimeStamp;
+	bool _paused = false;
 };
-
-#endif // CTIMEELAPSED_H
