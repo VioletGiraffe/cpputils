@@ -1,8 +1,10 @@
 #include "ctimeelapsed.h"
 #include "assert/advanced_assert.h"
 
-CTimeElapsed::CTimeElapsed()
+CTimeElapsed::CTimeElapsed(bool autoStart)
 {
+	if (autoStart)
+		start();
 }
 
 void CTimeElapsed::start()

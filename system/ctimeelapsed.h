@@ -5,7 +5,7 @@
 class CTimeElapsed
 {
 public:
-	CTimeElapsed();
+	explicit CTimeElapsed(bool autoStart = false);
 
 	CTimeElapsed(const CTimeElapsed&) = delete;
 	CTimeElapsed& operator=(const CTimeElapsed&) = delete;
