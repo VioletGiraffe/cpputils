@@ -16,25 +16,20 @@ void CWorkerThreadPool::CWorkerThread::start()
 	if (_working)
 		return;
 
+	if (_thread.joinable())
+		_thread.join();
+
 	_working = true;
 	_thread = std::thread(&CWorkerThread::threadFunc, this);
 }
 
 void CWorkerThreadPool::CWorkerThread::stop()
 {
-	if (_working)
-	{
-		// join() may throw
-		try {
-			_terminate = true;
-			_thread.join();
-			_terminate = false;
-		}
-		catch (std::exception& e)
-		{
-			assert_unconditional_r((std::string("Exception caught in CWorkerThread::stop(): ") + e.what()).c_str());
-		}
-	}
+	_terminate = true;
+	if (_thread.joinable())
+		_thread.join();
+	_terminate = false;
+	_working = false;
 }
 
 void CWorkerThreadPool::CWorkerThread::threadFunc()

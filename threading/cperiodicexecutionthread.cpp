@@ -47,20 +47,11 @@ void CPeriodicExecutionThread::start(const std::function<void()>& workload /*= s
 
 void CPeriodicExecutionThread::terminate()
 {
-	try
+	if (_thread.joinable())
 	{
-		if (_thread.joinable())
-		{
-			_terminate = true;
-			_thread.join();
-			_terminate = false;
-		}
-	}
-	catch (const std::exception& e)
-	{
+		_terminate = true;
+		_thread.join();
 		_terminate = false;
-		DEBUG_LOG(__FUNCTION__ << "exception caught:" << e.what());
-		(void)e;
 	}
 }
 

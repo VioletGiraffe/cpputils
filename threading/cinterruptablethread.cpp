@@ -25,7 +25,7 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 			assert_unconditional_r("Unhandled exec behavior");
 	}
 
-	// Without the _thread.join() call, the subsequent _thread assignment fails. Why?
+	// Without the _thread.join() call, the subsequent _thread assignment fails.
 	interrupt();
 	_terminate = false;
 
