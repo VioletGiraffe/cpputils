@@ -24,6 +24,7 @@ include (math/math.pri)
 include (threading/threading.pri)
 include (compiler/compiler.pri)
 include (assert/assert.pri)
+include (lang/lang.pri)
 
 INCLUDEPATH += ./
 
