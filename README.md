@@ -15,12 +15,10 @@ You can set your error message handler with `AdvancedAssert::setLoggingFunc(cons
 
 So, the "advanced" assert macros:
 - don't alter the code execution between debug and release builds;
-- always log failed assertions;
-- behave like a standard `assert` otherwise.
+- call the optional failed assertion handler (useful for logging);
+- behave like the standard `assert` otherwise.
 
-I only use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function.
-
-Additionally, the `assert_and_return*` macros let you significantly simplify and compactify routine error-checking code. Compare
+I use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function. The `assert_and_return*` macros let you significantly simplify and compactify routine error-checking code. Compare
 
 ```cpp
 bool doWork()
@@ -87,7 +85,8 @@ RESTORE_COMPILER_WARNINGS
 
 This is a cross-platform class for measuring wall time between two or more events with high accuracy (as opposed to the `clock()` function that reports CPU time and is hugely inaccurate for most use cases).
 Currently implemented for Windows, OS X and Linux.
-Millisecond resolution, but the internal accuracy is at least μs or better.
+Arbitrary resolution - the return value is converted to any `std::chrono` type supplied as the template parameter (ms by default). The internal accuracy is at least μs or better.
+Can be paused and resumed.
 
 ## Threading
 
