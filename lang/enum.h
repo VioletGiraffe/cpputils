@@ -57,6 +57,22 @@ public:
 		return std::end(_items);
 	}
 
+	static std::string itemName(const EnumType value)
+	{
+		auto item = std::find_if(std::begin(_items), std::end(_items), [value](const EnumItem& item){
+			return item.id == value;
+		});
+
+		assert_and_return_r(item != std::end(_items), std::string());
+
+		return item->name;
+	}
+
+	std::string itemName() const
+	{
+		return itemName(_value);
+	}
+
 protected:
 	EnumType _value;
 	static const EnumItem _items[];
