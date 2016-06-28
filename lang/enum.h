@@ -27,6 +27,7 @@ public:
 
 	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
 	{
+		assert(isKnownItem(initialValue));
 		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
 	}
 
@@ -48,6 +49,7 @@ public:
 
 	Enum& operator=(EnumType newValue)
 	{
+		assert(isKnownItem(newValue));
 		_id = newValue;
 		return *this;
 	}
@@ -86,6 +88,12 @@ public:
 	static const EnumItem* end()
 	{
 		return std::end(_items);
+	}
+
+private:
+	bool isKnownItem(EnumType id) const
+	{
+		return std::find(std::begin(_items), std::end(_items), id) != std::end(_items);
 	}
 
 protected:
