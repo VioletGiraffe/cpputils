@@ -10,51 +10,56 @@ template <typename EnumType>
 class Enum
 {
 public:
+	typedef EnumType Enum_Type;
+
 	struct EnumItem {
+		bool operator==(EnumType value) const {
+			return id == value;
+		}
+
+		bool operator!=(EnumType value) const {
+			return !(*this == value);
+		}
+
 		EnumType id;
 		std::string name;
 	};
 
-	Enum(EnumType initialValue = _items[0]) : _value(initialValue)
+	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
 	{
 		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
 	}
 
-	Enum(const Enum<EnumType>& other) : _value(other._value)
+	Enum(const Enum<EnumType>& other) : _id(other._id)
+	{
+		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
+	}
+
+	Enum(const EnumItem& item) : _id(item.id)
 	{
 		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
 	}
 
 	Enum& operator=(const Enum<EnumType>& other)
 	{
-		_value = other._value;
+		_id = other._id;
 		return *this;
 	}
 
 	Enum& operator=(EnumType newValue)
 	{
-		_value = newValue;
+		_id = newValue;
 		return *this;
 	}
 
 	EnumType value() const
 	{
-		return _value;
+		return _id;
 	}
 
 	operator EnumType() const
 	{
 		return value();
-	}
-
-	static const EnumItem* begin()
-	{
-		return std::begin(_items);
-	}
-
-	static const EnumItem* end()
-	{
-		return std::end(_items);
 	}
 
 	static std::string itemName(const EnumType value)
@@ -70,11 +75,21 @@ public:
 
 	std::string itemName() const
 	{
-		return itemName(_value);
+		return itemName(_id);
+	}
+
+	static const EnumItem* begin()
+	{
+		return std::begin(_items);
+	}
+
+	static const EnumItem* end()
+	{
+		return std::end(_items);
 	}
 
 protected:
-	EnumType _value;
+	EnumType _id;
 	static const EnumItem _items[];
 };
 
