@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iterator>
 #include <string>
+#include <vector>
 
 template <typename EnumType>
 class Enum
@@ -27,18 +28,16 @@ public:
 
 	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
 	{
-		assert(isKnownItem(initialValue));
-		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
+		assert(isKnownItem(_id));
 	}
 
 	Enum(const Enum<EnumType>& other) : _id(other._id)
 	{
-		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
 	}
 
 	Enum(const EnumItem& item) : _id(item.id)
 	{
-		static_assert(sizeof(_items) != 0, "_items list cannot be empty");
+		assert(isKnownItem(_id));
 	}
 
 	Enum& operator=(const Enum<EnumType>& other)
@@ -80,12 +79,12 @@ public:
 		return itemName(_id);
 	}
 
-	static const EnumItem* begin()
+	static typename std::vector<EnumItem>::const_iterator begin()
 	{
 		return std::begin(_items);
 	}
 
-	static const EnumItem* end()
+	static typename std::vector<EnumItem>::const_iterator end()
 	{
 		return std::end(_items);
 	}
@@ -98,6 +97,6 @@ private:
 
 protected:
 	EnumType _id;
-	static const EnumItem _items[];
+	static const std::vector<EnumItem> _items;
 };
 
