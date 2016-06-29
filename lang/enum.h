@@ -92,7 +92,11 @@ public:
 private:
 	bool isKnownItem(EnumType id) const
 	{
-		return std::find(std::begin(_items), std::end(_items), id) != std::end(_items);
+		for (size_t i = 0, end = _items.size(); i < end; ++i)
+			if (_items[i].id == id)
+				return true;
+
+		return false;
 	}
 
 protected:
