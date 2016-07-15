@@ -90,9 +90,9 @@ public:
 	}
 
 private:
-	bool isKnownItem(EnumType id) const
+	static bool isKnownItem(EnumType id)
 	{
-		for (size_t i = 0, end = _items.size(); i < end; ++i)
+		for (size_t i = 0, end = _items.size(); i != end; ++i)
 			if (_items[i].id == id)
 				return true;
 
