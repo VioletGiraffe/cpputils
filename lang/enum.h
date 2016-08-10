@@ -26,21 +26,23 @@ public:
 		std::string name;
 	};
 
+	// cppcheck-suppress noExplicitConstructor
 	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
 	{
 		assert(isKnownItem(_id));
 	}
 
-	Enum(const Enum<EnumType>& other) : _id(other._id)
+	Enum(const Enum& other) : _id(other._id)
 	{
 	}
 
+	// cppcheck-suppress noExplicitConstructor
 	Enum(const EnumItem& item) : _id(item.id)
 	{
 		assert(isKnownItem(_id));
 	}
 
-	Enum& operator=(const Enum<EnumType>& other)
+	Enum& operator=(const Enum& other)
 	{
 		_id = other._id;
 		return *this;
