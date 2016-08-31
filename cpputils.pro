@@ -30,7 +30,9 @@ win32*:!*msvc2012:*msvc* {
 	QMAKE_CXXFLAGS += /FS
 }
 
-INCLUDEPATH += ./
+INCLUDEPATH += \
+	./ \
+	../cpp-template-utils/
 
 win*{
 	QMAKE_CXXFLAGS += /MP

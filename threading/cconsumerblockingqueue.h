@@ -77,11 +77,14 @@ template <typename T>
 void CConsumerBlockingQueue<T>::pop(T& receiver)
 {
 	std::unique_lock<std::mutex> lock(_mutex);
-	while(_queue.empty())
+	if (_queue.empty())
 		_cond.wait(lock);
 
-	receiver = std::move(_queue.front());
-	_queue.pop_front();
+	if (!_queue.empty())
+	{
+		receiver = std::move(_queue.front());
+		_queue.pop_front();
+	}
 }
 
 template <typename T>

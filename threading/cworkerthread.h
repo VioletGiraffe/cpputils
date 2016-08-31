@@ -34,7 +34,7 @@ class CWorkerThreadPool
 
 public:
 	CWorkerThreadPool(size_t maxNumThreads, const std::string& poolName);
-	~CWorkerThreadPool();
+	~CWorkerThreadPool() = default;
 
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;

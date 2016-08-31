@@ -1,4 +1,7 @@
 #include "cworkerthread.h"
+#include "utility/on_scope_exit.hpp"
+
+#include <sstream>
 
 CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<std::function<void ()> >& queue, const std::string& threadName) :
 	_queue(queue),
@@ -26,8 +29,13 @@ void CWorkerThreadPool::CWorkerThread::start()
 void CWorkerThreadPool::CWorkerThread::stop()
 {
 	_terminate = true;
+
+	// In case the thread was waiting. Since we can't wake only a specific thread, we have to wake all of them to terminate one.
+	_queue.wakeAllThreads();
+
 	if (_thread.joinable())
 		_thread.join();
+
 	_terminate = false;
 	_working = false;
 }
@@ -35,14 +43,28 @@ void CWorkerThreadPool::CWorkerThread::stop()
 void CWorkerThreadPool::CWorkerThread::threadFunc()
 {
 	_working = true;
-	while (!_terminate)
+	EXEC_ON_SCOPE_EXIT([this]() {
+		_working = false;
+	});
+
+	try
 	{
-		std::function<void()> task;
-		_queue.pop(task);
-		if (task)
-			task();
+		while (!_terminate)
+		{
+			std::function<void()> task;
+			_queue.pop(task);
+			if (task)
+				task();
+		}
 	}
-	_working = false;
+	catch (std::exception& e)
+	{
+		assert_unconditional_r((std::string("std::exception caught: ") + e.what()).c_str());
+	}
+	catch (...)
+	{
+		assert_unconditional_r("Unknown exception caught");
+	}
 }
 
 
@@ -50,30 +72,17 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, const std::string& po
 	_poolName(poolName),
 	_maxNumThreads(maxNumThreads)
 {
-}
-
-CWorkerThreadPool::~CWorkerThreadPool()
-{
-	for (auto& thread : _workerThreads)
+	for (size_t i = 0; i < maxNumThreads; ++i)
 	{
-		// Pushing a dummy item in the task queue so that pop() wakes up and the thread may resume in order to finish
-		// TODO: this is unreliable
-		for (size_t i = 0; i < _workerThreads.size(); ++i)
-			_queue.push([](){
-			std::this_thread::sleep_for(std::chrono::milliseconds(2));
-		});
-		thread.stop();
+		std::ostringstream ss;
+		ss << poolName << " worker thread #" << i+1;
+		auto s = ss.str();
+		_workerThreads.emplace_back(_queue, ss.str());
+		_workerThreads.back().start();
 	}
 }
 
 void CWorkerThreadPool::enqueue(const std::function<void ()>& task)
 {
 	_queue.push(task);
-	if (_workerThreads.size() < _maxNumThreads && _queue.size() > _workerThreads.size())
-	{
-		std::stringstream ss;
-		ss << _poolName << " worker thread #" << _workerThreads.size() + 1;
-		_workerThreads.emplace_back(_queue, ss.str());
-		_workerThreads.back().start();
-	}
 }
