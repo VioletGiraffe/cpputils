@@ -1,6 +1,7 @@
 #include "cworkerthread.h"
 #include "utility/on_scope_exit.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<std::function<void ()> >& queue, const std::string& threadName) :
@@ -38,6 +39,17 @@ void CWorkerThreadPool::CWorkerThread::stop()
 
 	_terminate = false;
 	_working = false;
+}
+
+void CWorkerThreadPool::CWorkerThread::interrupt_point() const
+{
+	if (_terminate)
+		return;
+}
+
+std::thread::id CWorkerThreadPool::CWorkerThread::tid() const
+{
+	return std::this_thread::get_id();
 }
 
 void CWorkerThreadPool::CWorkerThread::threadFunc()
@@ -85,4 +97,25 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, const std::string& po
 void CWorkerThreadPool::enqueue(const std::function<void ()>& task)
 {
 	_queue.push(task);
+}
+
+void CWorkerThreadPool::interrupt_point() const
+{
+	workerByTid(std::this_thread::get_id()).interrupt_point();
+}
+
+const CWorkerThreadPool::CWorkerThread& CWorkerThreadPool::workerByTid(std::thread::id id) const
+{
+	const auto threadIterator = std::find_if(_workerThreads.begin(), _workerThreads.end(), [&id](const CWorkerThread& thread){
+		return thread.tid() == id;
+	});
+
+	if (threadIterator != _workerThreads.end())
+		return *threadIterator;
+	else
+	{
+		static CConsumerBlockingQueue<std::function<void ()>> q;
+		static const CWorkerThread dummmy(q, std::string());
+		assert_and_return_unconditional_r("Thread with the specified ID not found", dummmy);
+	}
 }

@@ -21,6 +21,10 @@ class CWorkerThreadPool
 		void start();
 		void stop();
 
+		void interrupt_point() const;
+
+		std::thread::id tid() const;
+
 	private:
 		void threadFunc();
 
@@ -40,6 +44,11 @@ public:
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
 
 	void enqueue(const std::function<void()>& task);
+
+	void interrupt_point() const;
+
+private:
+	const CWorkerThread& workerByTid(std::thread::id id) const;
 
 private:
 	CConsumerBlockingQueue<std::function<void()>> _queue;
