@@ -16,8 +16,13 @@ public:
 	// Returns the time since the last start() call, minus however long the pause(s) had lasted, in the specified std::chrono duration units
 	template <typename StdChronoDurationUnit = std::chrono::milliseconds>
 	uint64_t elapsed() const {
-		return (std::chrono::duration_cast<StdChronoDurationUnit>((std::chrono::high_resolution_clock::now() - _startTimeStamp) + _pausedFor)).count();
+		if (!_paused)
+			return (std::chrono::duration_cast<StdChronoDurationUnit>((std::chrono::high_resolution_clock::now() - _startTimeStamp) + _pausedFor)).count();
+		else
+			return (std::chrono::duration_cast<StdChronoDurationUnit>(_pauseTimeStamp - _startTimeStamp)).count();
 	}
+
+	bool paused();
 
 private:
 	std::chrono::high_resolution_clock::time_point _startTimeStamp;
