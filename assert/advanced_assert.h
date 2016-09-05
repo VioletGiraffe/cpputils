@@ -19,6 +19,10 @@ public:
 		}
 	}
 
+	inline static void logMessage(const std::string& message, const char* func, int line) {
+		logMessage(message.c_str(), func, line);
+	}
+
 	inline static void logMessage(const char* message, const char* func, int line) {
 		if (_loggingFunc)
 		{
