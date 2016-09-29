@@ -32,6 +32,8 @@ void CWorkerThreadPool::CWorkerThread::stop()
 	_terminate = true;
 
 	// In case the thread was waiting. Since we can't wake only a specific thread, we have to wake all of them to terminate one.
+	// TODO: find a deterministic fix for the shutdown issue
+	std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	_queue.wakeAllThreads();
 
 	if (_thread.joinable())
