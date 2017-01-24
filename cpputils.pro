@@ -22,10 +22,10 @@ android {
 }
 
 DESTDIR  = ../bin/$${OUTPUT_DIR}/
-OBJECTS_DIR = ../build/$${OUTPUT_DIR}/cpputils/
-MOC_DIR     = ../build/$${OUTPUT_DIR}/cpputils/
-UI_DIR      = ../build/$${OUTPUT_DIR}/cpputils/
-RCC_DIR     = ../build/$${OUTPUT_DIR}/cpputils/
+OBJECTS_DIR = ../build/$${OUTPUT_DIR}/$${TARGET}
+MOC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
+UI_DIR      = ../build/$${OUTPUT_DIR}/$${TARGET}
+RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 
 CONFIG -= qt
 CONFIG += c++14
