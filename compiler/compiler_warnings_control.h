@@ -5,7 +5,7 @@
 #define COMPILER_PRAGMA(text) __pragma(text)
 #define STORE_COMPILER_WARNINGS COMPILER_PRAGMA(warning(push))
 #define RESTORE_COMPILER_WARNINGS COMPILER_PRAGMA(warning(pop))
-#define DISABLE_SPECIFIC_COMPILER_WARNING(warningCode) COMPILER_PRAGMA(warning (diable: warningCode))
+#define DISABLE_SPECIFIC_COMPILER_WARNING(warningCode) COMPILER_PRAGMA(warning (disable: warningCode))
 #define DISABLE_MSVC_WARNING(warningCode) DISABLE_SPECIFIC_COMPILER_WARNING(warningCode)
 #define DISABLE_CLANG_GCC_WARNING(warning)
 
