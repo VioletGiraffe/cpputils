@@ -49,21 +49,28 @@
 	STORE_COMPILER_WARNINGS \
 	COMPILER_PRAGMA(warning(push, 0)) // Set /W0
 
-#elif defined __clang__ || defined __GNUC__ || defined __GNUG__
+#elif defined __clang__
 
-#ifdef __cplusplus
 #define DISABLE_COMPILER_WARNINGS \
 	STORE_COMPILER_WARNINGS \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wall") \
-	DISABLE_SPECIFIC_COMPILER_WARNING("-Wmisleading-indentation") \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Wunknown-pragmas")
+
+#elif defined __GNUC__ || defined __GNUG__
+
+#ifdef __cplusplus
+
+#define DISABLE_COMPILER_WARNINGS \
+	STORE_COMPILER_WARNINGS \
+	DISABLE_SPECIFIC_COMPILER_WARNING("-Wall") \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wmisleading-indentation") \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wterminate") \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wunknown-pragmas")
 #else
+
 #define DISABLE_COMPILER_WARNINGS \
 	STORE_COMPILER_WARNINGS \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wall") \
-	DISABLE_SPECIFIC_COMPILER_WARNING("-Wmisleading-indentation") \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wmisleading-indentation") \
 	DISABLE_SPECIFIC_COMPILER_WARNING("-Wunknown-pragmas")
 #endif
