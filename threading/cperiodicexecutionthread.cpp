@@ -6,7 +6,7 @@
 	DISABLE_COMPILER_WARNINGS
 	#include <QDebug>
 	RESTORE_COMPILER_WARNINGS
-	#define DEBUG_LOG(X) qDebug() << X
+	#define DEBUG_LOG(X) qInfo() << X
 #else
 	#define DEBUG_LOG(X)
 #endif
