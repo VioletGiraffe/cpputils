@@ -13,7 +13,7 @@ typedef struct tagTHREADNAME_INFO
 {
 	DWORD dwType = 0x1000; // Must be 0x1000.
 	LPCSTR szName; // Pointer to name (in user addr space).
-	DWORD dwThreadID = -1; // Thread ID (-1=caller thread).
+	DWORD dwThreadID = (DWORD)-1; // Thread ID (-1=caller thread).
 	DWORD dwFlags = 0; // Reserved for future use, must be zero.
  } THREADNAME_INFO;
 #pragma pack(pop)
