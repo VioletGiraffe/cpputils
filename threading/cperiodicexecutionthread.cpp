@@ -1,6 +1,7 @@
 #include "cperiodicexecutionthread.h"
 #include "compiler/compiler_warnings_control.h"
 #include "assert/advanced_assert.h"
+#include "thread_helpers.h"
 
 #ifdef QT_VERSION
 	DISABLE_COMPILER_WARNINGS
@@ -57,8 +58,9 @@ void CPeriodicExecutionThread::terminate()
 
 void CPeriodicExecutionThread::threadFunc()
 {
-	if (!_workload)
-		return;
+	assert_and_return_r(_workload, );
+
+	setThreadName(_threadName.c_str());
 
 	DEBUG_LOG("Starting CPeriodicExecutionThread" << QString::fromStdString(_threadName));
 

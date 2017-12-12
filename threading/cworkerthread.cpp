@@ -1,5 +1,6 @@
 #include "cworkerthread.h"
 #include "utility/on_scope_exit.hpp"
+#include "thread_helpers.h"
 
 #include <algorithm>
 #include <sstream>
@@ -57,6 +58,9 @@ std::thread::id CWorkerThreadPool::CWorkerThread::tid() const
 void CWorkerThreadPool::CWorkerThread::threadFunc()
 {
 	_working = true;
+
+	setThreadName(_threadName.c_str());
+
 	EXEC_ON_SCOPE_EXIT([this]() {
 		_working = false;
 	});
@@ -90,7 +94,6 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, const std::string& po
 	{
 		std::ostringstream ss;
 		ss << poolName << " worker thread #" << i+1;
-		auto s = ss.str();
 		_workerThreads.emplace_back(_queue, ss.str());
 		_workerThreads.back().start();
 	}

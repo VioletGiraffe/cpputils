@@ -1,5 +1,6 @@
 #include "cinterruptablethread.h"
 #include "assert/advanced_assert.h"
+#include "thread_helpers.h"
 
 CInterruptableThread::CInterruptableThread(const std::string& threadName, ExecBehavior behavior /*= InterruptIfRunning*/) :
 	_threadName(threadName),
@@ -31,6 +32,7 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 
 	_thread = std::thread([this, executable](){
 		_running = true;
+		setThreadName(_threadName.c_str());
 		executable();
 		_running = false;
 	});
