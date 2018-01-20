@@ -30,11 +30,22 @@ void setThreadName(const char *asciiName)
 	}
 }
 
-#else
+#elif defined __APPLE__
 
-void setThreadName(const char * /*asciiName*/)
+#include <pthread.h>
+
+void setThreadName(const char * asciiName)
 {
+	pthread_setname_np(asciiName);
+}
 
+#elif defined __linux__
+
+#include <sys/prctl.h>
+
+void setThreadName(const char * asciiName)
+{
+	prctl(PR_SET_NAME, asciiName, 0, 0, 0);
 }
 
 #endif
