@@ -5,7 +5,7 @@
 #include <Windows.h>
 #elif defined __linux__
 #include <unistd.h>
-#elif defined __APLLE_
+#elif defined __APPLE__
 #include <mach-o/dyld.h>
 #endif
 
