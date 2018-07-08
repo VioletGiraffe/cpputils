@@ -20,16 +20,16 @@ public:
 	}
 
 	inline static void logMessage(const std::string& message, const char* func, int line) {
-		logMessage(message.c_str(), func, line);
+		if (!_loggingFunc)
+			return;
+
+		std::ostringstream stream;
+		stream << func << ", line " << line << ": " << message;
+		_loggingFunc(stream.str().c_str());
 	}
 
 	inline static void logMessage(const char* message, const char* func, int line) {
-		if (_loggingFunc)
-		{
-			std::ostringstream stream;
-			stream << func << ", line " << line << ": " << message;
-			_loggingFunc(message);
-		}
+		logMessage(std::string(message), func, line);
 	}
 
 private:
