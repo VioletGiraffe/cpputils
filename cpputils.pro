@@ -1,12 +1,15 @@
 TEMPLATE = lib
-CONFIG += staticlib
 TARGET = cpputils
 
-mac* | linux*{
-	CONFIG(release, debug|release):CONFIG += Release
-	CONFIG(debug, debug|release):CONFIG += Debug
-}
+CONFIG += staticlib
+CONFIG -= qt
 
+CONFIG += strict_c++ c++14
+
+mac* | linux*{
+	CONFIG(release, debug|release):CONFIG *= Release optimize_full
+	CONFIG(debug, debug|release):CONFIG *= Debug
+}
 contains(QT_ARCH, x86_64) {
 	ARCHITECTURE = x64
 } else {
@@ -31,9 +34,6 @@ OBJECTS_DIR = ../build/$${OUTPUT_DIR}/$${TARGET}
 MOC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 UI_DIR      = ../build/$${OUTPUT_DIR}/$${TARGET}
 RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
-
-CONFIG -= qt
-CONFIG += c++14
 
 include (system/system.pri)
 include (math/math.pri)
