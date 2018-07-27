@@ -29,11 +29,11 @@ class CWorkerThreadPool
 		void threadFunc();
 
 	private:
-		CConsumerBlockingQueue<std::function<void()>>& _queue;
 		std::thread _thread;
+		std::string _threadName;
+		CConsumerBlockingQueue<std::function<void()>>& _queue;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
-		std::string _threadName;
 	};
 
 public:
