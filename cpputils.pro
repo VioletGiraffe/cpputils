@@ -35,6 +35,7 @@ MOC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 UI_DIR      = ../build/$${OUTPUT_DIR}/$${TARGET}
 RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 
+include (debugger/debugger.pri)
 include (system/system.pri)
 include (math/math.pri)
 include (threading/threading.pri)

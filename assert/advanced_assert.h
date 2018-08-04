@@ -3,7 +3,6 @@
 
 #include <functional>
 #include <sstream>
-#include <assert.h>
 
 class AdvancedAssert
 {
@@ -36,8 +35,17 @@ private:
 	static std::function<void (const char*)> _loggingFunc;
 };
 
+#ifdef _WIN32
+#include <assert.h>
+#define assert_without_abort(x) assert(x)
+#else
+#include "../debugger/debugger_is_attached.h"
+#include <signal.h>
+#define assert_without_abort(x) if (::debuggerIsAttached() && !(x)) ::raise(SIGTRAP)
+#endif
+
 #if defined _DEBUG || !defined NDEBUG
-#define assert_debug_only(condition) DISABLE_COMPILER_WARNINGS assert(condition); RESTORE_COMPILER_WARNINGS
+#define assert_debug_only(condition) DISABLE_COMPILER_WARNINGS assert_without_abort(condition); RESTORE_COMPILER_WARNINGS
 #else
 #define assert_debug_only(condition)
 #endif
