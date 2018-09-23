@@ -41,6 +41,7 @@ include (threading/threading.pri)
 include (compiler/compiler.pri)
 include (assert/assert.pri)
 include (lang/lang.pri)
+include (regex/regex.pri)
 
 win32*:!*msvc2012:*msvc* {
 	QMAKE_CXXFLAGS += /FS

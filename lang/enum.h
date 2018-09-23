@@ -67,12 +67,9 @@ public:
 
 	static std::string itemName(const EnumType value)
 	{
-		auto item = std::find_if(std::begin(_items), std::end(_items), [value](const EnumItem& item){
-			return item.id == value;
-		});
+		const auto item = findItem(value);
 
-		assert_and_return_r(item != std::end(_items), std::string());
-
+		assert_and_return_r(item != std::cend(_items), std::string());
 		return item->name;
 	}
 
@@ -92,13 +89,16 @@ public:
 	}
 
 private:
-	static bool isKnownItem(EnumType id)
+	inline static typename std::vector<EnumItem>::const_iterator findItem(EnumType id)
 	{
-		for (size_t i = 0, end = _items.size(); i != end; ++i)
-			if (_items[i].id == id)
-				return true;
+		return std::find_if(_items.cbegin(), _items.cend(), [id](const EnumItem& item) {
+			return item.id == id;
+		});
+	}
 
-		return false;
+	inline static bool isKnownItem(EnumType id)
+	{
+		return findItem(id) != _items.cend();
 	}
 
 protected:
