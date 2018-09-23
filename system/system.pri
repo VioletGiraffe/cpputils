@@ -1,5 +1,7 @@
 HEADERS += \
-    $$PWD/ctimeelapsed.h
+    $$PWD/ctimeelapsed.h \
+    $$PWD/processfilepath.hpp
 
 SOURCES += \
-    $$PWD/ctimeelapsed.cpp
+    $$PWD/ctimeelapsed.cpp \
+    $$PWD/processfilepath.cpp

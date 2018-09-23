@@ -29,7 +29,7 @@ public:
 	// cppcheck-suppress noExplicitConstructor
 	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
 	{
-		assert(isKnownItem(_id));
+		assert_debug_only(isKnownItem(_id));
 	}
 
 	Enum(const Enum& other) : _id(other._id)
@@ -39,7 +39,7 @@ public:
 	// cppcheck-suppress noExplicitConstructor
 	Enum(const EnumItem& item) : _id(item.id)
 	{
-		assert(isKnownItem(_id));
+		assert_debug_only(isKnownItem(_id));
 	}
 
 	Enum& operator=(const Enum& other)
@@ -50,7 +50,7 @@ public:
 
 	Enum& operator=(EnumType newValue)
 	{
-		assert(isKnownItem(newValue));
+		assert_debug_only(isKnownItem(newValue));
 		_id = newValue;
 		return *this;
 	}

@@ -1,12 +1,15 @@
 TEMPLATE = lib
-CONFIG += staticlib
 TARGET = cpputils
 
-mac* | linux*{
-	CONFIG(release, debug|release):CONFIG += Release
-	CONFIG(debug, debug|release):CONFIG += Debug
-}
+CONFIG += staticlib
+CONFIG -= qt
 
+CONFIG += strict_c++ c++14
+
+mac* | linux*{
+	CONFIG(release, debug|release):CONFIG *= Release optimize_full
+	CONFIG(debug, debug|release):CONFIG *= Debug
+}
 contains(QT_ARCH, x86_64) {
 	ARCHITECTURE = x64
 } else {
@@ -32,9 +35,7 @@ MOC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 UI_DIR      = ../build/$${OUTPUT_DIR}/$${TARGET}
 RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 
-CONFIG -= qt
-CONFIG += c++14
-
+include (debugger/debugger.pri)
 include (system/system.pri)
 include (math/math.pri)
 include (threading/threading.pri)
@@ -52,7 +53,7 @@ INCLUDEPATH += \
 	../cpp-template-utils/
 
 win*{
-	QMAKE_CXXFLAGS += /MP
+	QMAKE_CXXFLAGS += /MP /Zi
 	DEFINES += WIN32_LEAN_AND_MEAN NOMINMAX
 	QMAKE_CXXFLAGS_WARN_ON = /W4
 
