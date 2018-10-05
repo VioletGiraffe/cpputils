@@ -2,4 +2,4 @@
 
 #include <functional>
 
-void registerExithandler(std::function<void ()>&& onExit);
+void registerExithandler(std::function<bool()>&& onExit);

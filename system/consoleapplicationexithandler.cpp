@@ -3,7 +3,7 @@
 
 #include <utility>
 
-static std::function<void ()> exitHandler;
+static std::function<bool()> exitHandler;
 
 #ifdef _WIN32
 
@@ -18,8 +18,7 @@ static BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
 	case CTRL_BREAK_EVENT:
 	case CTRL_LOGOFF_EVENT:
 	case CTRL_SHUTDOWN_EVENT:
-		exitHandler();
-		return TRUE;
+		return exitHandler() ? TRUE : FALSE;
 
 	default:
 		return FALSE;
@@ -28,7 +27,7 @@ static BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
 #else
 #endif
 
-void registerExithandler(std::function<void ()>&& onExit)
+void registerExithandler(std::function<bool ()>&& onExit)
 {
 	exitHandler = std::move(onExit);
 
