@@ -61,19 +61,21 @@ inline uint64_t sha3_64bit(void const *bufIn, size_t len)
 {
 	sha3_context c;
 	const uint8_t * hash;
-	uint64_t result;
 
 	sha3_Init256(&c);
 	sha3_Update(&c, bufIn, len);
 	hash = (const uint8_t*)sha3_Finalize(&c);
 
-	for (int i = 0; i < 256/8; i += 256/sizeof(uint64_t))
-	{
-		result = result | hash[i];
-		result <<= 8;
-	}
+	return
+		((uint64_t)((hash[0] ^ hash[1]) ^ (hash[2] ^ hash[3])) << 56) |
+		((uint64_t)((hash[4] ^ hash[5]) ^ (hash[6] ^ hash[7])) << 48) |
+		((uint64_t)((hash[8] ^ hash[9]) ^ (hash[10] ^ hash[11])) << 40) |
+		((uint64_t)((hash[12] ^ hash[13]) ^ (hash[14] ^ hash[15])) << 32) |
+		((uint64_t)((hash[16] ^ hash[17]) ^ (hash[18] ^ hash[19])) << 24) |
+		((uint64_t)((hash[20] ^ hash[21]) ^ (hash[22] ^ hash[23])) << 16) |
+		((uint64_t)((hash[24] ^ hash[25]) ^ (hash[26] ^ hash[27])) << 8) |
+		((uint64_t)((hash[28] ^ hash[29]) ^ (hash[30] ^ hash[31])));
 
-	return result;
 }
 
 #endif
