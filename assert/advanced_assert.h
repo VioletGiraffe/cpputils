@@ -36,8 +36,8 @@ private:
 };
 
 #ifdef _WIN32
-#include <assert.h>
-#define assert_without_abort(x) assert(x)
+#include <crtdbg.h>
+#define assert_without_abort(x) _ASSERT(x)
 #else
 #include "../debugger/debugger_is_attached.h"
 #include <signal.h>
