@@ -146,9 +146,9 @@ void MurmurHash3_x64_128(const void * key, const int len,
 	((uint64_t*)out)[1] = h2;
 }
 
-std::array<uint8_t, 8> MurmurHash3_x64_128(const void * key, int len)
+std::array<uint8_t, 16> MurmurHash3_x64_128(const void * key, int len)
 {
-	std::array<uint8_t, 8> hash;
+	std::array<uint8_t, 16> hash;
 	MurmurHash3_x64_128(key, len, 104729, hash.data());
 
 	return hash;
