@@ -48,14 +48,14 @@ CConsumerBlockingQueue<T>::CConsumerBlockingQueue(size_t maxSize) : _maxSize(max
 template <typename T>
 size_t CConsumerBlockingQueue<T>::size() const
 {
-	std::unique_lock<std::mutex> locker(_mutex);
+	std::lock_guard <std::mutex> locker(_mutex);
 	return _queue.size();
 }
 
 template <typename T>
 bool CConsumerBlockingQueue<T>::empty() const
 {
-	std::unique_lock<std::mutex> locker(_mutex);
+	std::lock_guard <std::mutex> locker(_mutex);
 	return _queue.empty();
 }
 
@@ -94,9 +94,11 @@ void CConsumerBlockingQueue<T>::push(const T& item)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
 	{
-		std::unique_lock<std::mutex> lock(_mutex);
-		_queue.push_back(item);
-		lock.unlock();
+		{
+			std::lock_guard<std::mutex> lock(_mutex);
+			_queue.push_back(item);
+		}
+
 		_cond.notify_one();
 	}
 }

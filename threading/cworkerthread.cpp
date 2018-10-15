@@ -55,6 +55,11 @@ std::thread::id CWorkerThreadPool::CWorkerThread::tid() const
 	return std::this_thread::get_id();
 }
 
+size_t CWorkerThreadPool::CWorkerThread::queueLength() const
+{
+	return _queue.size();
+}
+
 void CWorkerThreadPool::CWorkerThread::threadFunc()
 {
 	_working = true;

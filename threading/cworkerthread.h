@@ -24,6 +24,7 @@ class CWorkerThreadPool
 		void interrupt_point() const;
 
 		std::thread::id tid() const;
+		size_t queueLength() const;
 
 	private:
 		void threadFunc();
