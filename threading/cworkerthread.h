@@ -24,7 +24,6 @@ class CWorkerThreadPool
 		void interrupt_point() const;
 
 		std::thread::id tid() const;
-		size_t queueLength() const;
 
 	private:
 		void threadFunc();
@@ -47,6 +46,9 @@ public:
 	void enqueue(const std::function<void()>& task);
 
 	void interrupt_point() const;
+
+	size_t maxWorkersCount() const;
+	size_t queueLength() const;
 
 private:
 	const CWorkerThread& workerByTid(std::thread::id id) const;

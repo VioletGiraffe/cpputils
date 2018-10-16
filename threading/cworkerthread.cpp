@@ -55,11 +55,6 @@ std::thread::id CWorkerThreadPool::CWorkerThread::tid() const
 	return std::this_thread::get_id();
 }
 
-size_t CWorkerThreadPool::CWorkerThread::queueLength() const
-{
-	return _queue.size();
-}
-
 void CWorkerThreadPool::CWorkerThread::threadFunc()
 {
 	_working = true;
@@ -112,6 +107,16 @@ void CWorkerThreadPool::enqueue(const std::function<void ()>& task)
 void CWorkerThreadPool::interrupt_point() const
 {
 	workerByTid(std::this_thread::get_id()).interrupt_point();
+}
+
+size_t CWorkerThreadPool::maxWorkersCount() const
+{
+	return _maxNumThreads;
+}
+
+size_t CWorkerThreadPool::queueLength() const
+{
+	return _queue.size();
 }
 
 const CWorkerThreadPool::CWorkerThread& CWorkerThreadPool::workerByTid(std::thread::id id) const
