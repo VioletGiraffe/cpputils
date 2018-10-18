@@ -192,9 +192,6 @@ sha3_Update(void *priv, void const *bufIn, size_t len)
 				((uint64_t) (buf[5]) << 8 * 5) |
 				((uint64_t) (buf[6]) << 8 * 6) |
 				((uint64_t) (buf[7]) << 8 * 7);
-#if defined(__x86_64__ ) || defined(__i386__)
-		SHA3_ASSERT(memcmp(&t, buf, 8) == 0);
-#endif
 		ctx->s[ctx->wordIndex] ^= t;
 		if(++ctx->wordIndex ==
 				(SHA3_KECCAK_SPONGE_WORDS - ctx->capacityWords)) {
