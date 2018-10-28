@@ -13,12 +13,12 @@ public:
 	CConsumerBlockingQueue<T>& operator=(const CConsumerBlockingQueue<T>&) = delete;
 	CConsumerBlockingQueue(const CConsumerBlockingQueue<T>&) = delete;
 
-	explicit CConsumerBlockingQueue (size_t maxSize = std::numeric_limits<size_t>::max());
+	explicit CConsumerBlockingQueue(size_t maxSize = std::numeric_limits<size_t>::max());
 	void push(const T& item);
 	// Non-blocking
-	bool try_pop (T& item);
+	bool try_pop(T& item);
 	// Blocking
-	void pop (T& receiver);
+	bool pop(T& receiver, const uint32_t timeout_ms = std::numeric_limits<uint32_t>::max());
 
 	// This method is needed for shutdown - to wake up all the threads that wait on this queue
 	void wakeAllThreads();
@@ -74,17 +74,20 @@ bool CConsumerBlockingQueue<T>::try_pop(T& item)
 
 // Blocking access
 template <typename T>
-void CConsumerBlockingQueue<T>::pop(T& receiver)
+bool CConsumerBlockingQueue<T>::pop(T& receiver, const uint32_t timeout_ms)
 {
 	std::unique_lock<std::mutex> lock(_mutex);
 	if (_queue.empty())
-		_cond.wait(lock);
+		_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms));
 
 	if (!_queue.empty())
 	{
 		receiver = std::move(_queue.front());
 		_queue.pop_front();
+		return true;
 	}
+
+	return false;
 }
 
 template <typename T>

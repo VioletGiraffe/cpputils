@@ -70,8 +70,7 @@ void CWorkerThreadPool::CWorkerThread::threadFunc()
 		while (!_terminate)
 		{
 			std::function<void()> task;
-			_queue.pop(task);
-			if (task)
+			if (_queue.pop(task, 5000))
 				task();
 		}
 	}
