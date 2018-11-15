@@ -1,6 +1,8 @@
 #ifndef SHA3_H
 #define SHA3_H
 
+#include "../compiler/compiler_warnings_control.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -31,10 +33,15 @@ extern "C" {
 	typedef struct sha3_context_ {
 		uint64_t saved;             /* the portion of the input message that we
 									 * didn't consume yet */
+
+STORE_COMPILER_WARNINGS
+DISABLE_MSVC_WARNING(4201) // warning C4201: nonstandard extension used: nameless struct/union
 		union {                     /* Keccak's state */
 			uint64_t s[SHA3_KECCAK_SPONGE_WORDS];
 			uint8_t sb[SHA3_KECCAK_SPONGE_WORDS * 8];
 		};
+RESTORE_COMPILER_WARNINGS
+
 		unsigned byteIndex;         /* 0..7--the next byte after the set one
 									 * (starts from 0; 0--none are buffered) */
 		unsigned wordIndex;         /* 0..24--the next word to integrate input
