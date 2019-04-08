@@ -7,16 +7,16 @@ This library contains various C++ classes and snippets I've found myself in need
 ## "Advanced Assert"
 
 A collection of assert-like macros with two key differences from a regular C `assert`:
-  * the code you pass to the advanced assert macros (ending with `_r`) is executed in release build as well as debug;
-  * when assertion fails, a message can be printed or otherwise processed using a callback function that you supply.
+* the code you pass to the advanced assert macros (ending with `_r`) is executed in release build as well as debug;
+* when assertion fails, a message can be printed or otherwise processed using a callback function that you supply.
 
 Like  regular `assert`, the `assert*_r` macros *will not*  trigger the `abort()` function or display an error message box when assertion fails in release build.
 You can set your error message handler with `AdvancedAssert::setLoggingFunc(const std::function<void (const char*)>& func)`.
 
 So, the "advanced" assert macros:
-  * don't alter the code execution between debug and release builds;
-  * call the optional failed assertion handler (useful for logging);
-  * behave like the standard `assert` otherwise.
+* don't alter the code execution between debug and release builds;
+* call the optional failed assertion handler (useful for logging);
+* behave like the standard `assert` otherwise.
 
 I use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function. The `assert_and_return*` macros let you significantly simplify and compactify routine error-checking code. Compare
 
@@ -114,9 +114,9 @@ Another simple `std::thread` wrapper that executes the specified code every `per
 
 The companion header-only [cpp-template-utils](https://github.com/VioletGiraffe/cpp-template-utils) library is required.
 
-  * A compiler with C++ 0x/11 support is required (std::thread, lambda functions etc.).
-  * Windows: you can build using either Qt Creator or Visual Studio for IDE. Visual Studio 2013 or newer is required - v120 toolset or newer. Run `qmake -tp vc -r` to generate the solution for Visual Studio. I have not tried building with MinGW, but it should work as long as you enable C++ 11 support.
-  * Linux: open the project file in Qt Creator and build it.
-  * Mac OS X: You can use either Qt Creator (simply open the project in it) or Xcode (run `qmake -r -spec macx-xcode` and open the Xcode project that has been generated).
+* A compiler with C++ 0x/11 support is required (std::thread, lambda functions etc.).
+* Windows: you can build using either Qt Creator or Visual Studio for IDE. Visual Studio 2013 or newer is required - v120 toolset or newer. Run `qmake -tp vc -r` to generate the solution for Visual Studio. I have not tried building with MinGW, but it should work as long as you enable C++ 11 support.
+* Linux: open the project file in Qt Creator and build it.
+* Mac OS X: You can use either Qt Creator (simply open the project in it) or Xcode (run `qmake -r -spec macx-xcode` and open the Xcode project that has been generated).
 
 P. S. Even though I use `qmake` as the build system for personal convenience, none of the actual code in this library depends on Qt. Only the C++11 standard library is required. Building with a diffrent build system is trivial, use the Qt `.pro` and `.pri` files as a reference.
