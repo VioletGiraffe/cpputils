@@ -6,7 +6,7 @@ CONFIG -= qt
 
 CONFIG += strict_c++ c++17
 
-mac* | linux*{
+mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
 	CONFIG(debug, debug|release):CONFIG *= Debug
 }
@@ -65,7 +65,7 @@ win*{
 	Release:QMAKE_LFLAGS += /OPT:REF /OPT:ICF
 }
 
-linux*|mac*{
+linux*|mac*|freebsd{
 	QMAKE_CXXFLAGS += -pedantic-errors
 	QMAKE_CFLAGS += -pedantic-errors
 	QMAKE_CXXFLAGS_WARN_ON = -Wall -Wno-c++11-extensions -Wno-local-type-template-args -Wno-deprecated-register
