@@ -11,3 +11,7 @@ SOURCES += \
     $$PWD/cworkerthread.cpp \
     $$PWD/cinterruptablethread.cpp \
     $$PWD/thread_helpers.cpp
+
+freebsd {
+    LIBS += -lpthread
+}

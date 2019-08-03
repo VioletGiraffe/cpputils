@@ -47,5 +47,12 @@ void setThreadName(const char * asciiName)
 {
 	prctl(PR_SET_NAME, asciiName, 0, 0, 0);
 }
+#elif defined __FreeBSD__
+#include <pthread_np.h>
+#include <pthread.h>
+void setThreadName(const char * asciiName)
+{
+	pthread_set_name_np(pthread_self(),asciiName);
+}
 
 #endif
