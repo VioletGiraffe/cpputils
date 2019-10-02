@@ -1,10 +1,10 @@
 #pragma once
 
+#include "../lang/type_traits_fast.hpp"
+
 #include <condition_variable>
 #include <deque>
-#include <limits>
 #include <mutex>
-#include <thread>
 
 template <typename T>
 class CConsumerBlockingQueue
@@ -13,12 +13,18 @@ public:
 	CConsumerBlockingQueue<T>& operator=(const CConsumerBlockingQueue<T>&) = delete;
 	CConsumerBlockingQueue(const CConsumerBlockingQueue<T>&) = delete;
 
-	explicit CConsumerBlockingQueue(size_t maxSize = std::numeric_limits<size_t>::max());
-	void push(const T& item);
+	explicit CConsumerBlockingQueue(size_t maxSize = static_cast<size_t>(int32_max));
+
+	struct QueuePushResult {
+		bool pushed; // True on success, false if maxSize is reached
+		size_t queueSize; // The current queue size after the operation
+	};
+	// Non-blocking
+	QueuePushResult try_push(const T& item);
 	// Non-blocking
 	bool try_pop(T& item);
 	// Blocking
-	bool pop(T& receiver, const uint32_t timeout_ms = std::numeric_limits<uint32_t>::max());
+	bool pop(T& receiver, const uint32_t timeout_ms = uint32_max);
 
 	// This method is needed for shutdown - to wake up all the threads that wait on this queue
 	void wakeAllThreads();
@@ -91,17 +97,16 @@ bool CConsumerBlockingQueue<T>::pop(T& receiver, const uint32_t timeout_ms)
 }
 
 template <typename T>
-void CConsumerBlockingQueue<T>::push(const T& item)
+typename CConsumerBlockingQueue<T>::QueuePushResult CConsumerBlockingQueue<T>::try_push(const T& item)
 {
-	while (_queue.size() > _maxSize) // Block until there's space in queue. Dangerous?
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
 	{
-		{
-			std::lock_guard<std::mutex> lock(_mutex);
-			_queue.push_back(item);
-		}
+		std::lock_guard<std::mutex> lock(_mutex);
+		const auto queueSize = _queue.size();
+		if (_queue.size() >= _maxSize) // No more space in the queue
+			return { false, queueSize };
 
+		_queue.push_back(item);
 		_cond.notify_one();
+		return { true, queueSize + 1 };
 	}
 }
