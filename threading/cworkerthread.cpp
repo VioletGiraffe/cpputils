@@ -81,7 +81,9 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName)
 {
 	for (size_t i = 1; i <= maxNumThreads; ++i)
 	{
-		_workerThreads.emplace_back(_queue, (std::ostringstream{} << _poolName << " worker thread #" << i).str()).start();
+		std::ostringstream stream;
+		stream << _poolName << " worker thread #" << i;
+		_workerThreads.emplace_back(_queue, stream.str()).start();
 	}
 }
 
