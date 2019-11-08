@@ -1,4 +1,5 @@
 #include "debugger_is_attached.h"
+#include "utility/on_scope_exit.hpp"
 #ifdef _WIN32
 #include <Windows.h>
 #else
@@ -19,6 +20,10 @@ bool debuggerIsAttached()
 	const int status_fd = ::open("/proc/self/status", O_RDONLY);
 	if (status_fd == -1)
 		return false;
+
+	EXEC_ON_SCOPE_EXIT([&status_fd](){
+		::close(status_fd);
+	});
 
 	const ssize_t num_read = ::read(status_fd, buf, sizeof(buf) - 1);
 	if (num_read <= 0)
