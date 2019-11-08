@@ -24,14 +24,14 @@ public:
 		std::lock_guard<std::mutex> locker(_queueMutex);
 	}
 
-	inline void enqueue(const std::function<void ()>& code, int tag = -1)
+	inline void enqueue(std::function<void ()> code, int tag = -1)
 	{
 		std::lock_guard<std::mutex> locker(_queueMutex);
 		const auto existingExecutee = tag == -1 ? _queue.end() : std::find_if(_queue.begin(), _queue.end(), [tag](const Executee& e){return e.tag == tag;});
 		if (existingExecutee == _queue.end())
-			_queue.push_back({ tag, code });
+			_queue.emplace_back(Executee{ tag, std::move(code) });
 		else
-			existingExecutee->code = code;
+			existingExecutee->code = std::move(code);
 	}
 
 	inline void exec(ExecutionMode mode = execAll)
