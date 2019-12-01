@@ -18,17 +18,13 @@ public:
 		}
 	}
 
-	inline static void logMessage(const std::string& message, const char* func, int line) {
+	inline static void logMessage(std::string message, const char* func, int line) {
 		if (!_loggingFunc)
 			return;
 
 		std::ostringstream stream;
 		stream << func << ", line " << line << ": " << message;
 		_loggingFunc(stream.str().c_str());
-	}
-
-	inline static void logMessage(const char* message, const char* func, int line) {
-		logMessage(std::string(message), func, line);
 	}
 
 private:
@@ -55,9 +51,9 @@ private:
 // This implementation as an expression plays nicely with constructs like 'if (x) hlassert(y); else z;'
 // and lets you terminate hlassert with ';' in the calling code without breaking logic
 #define assert_r(condition) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__); assert_debug_only(!#condition);}} while(0)
-#define assert_message_r(condition, message) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(!#message);}} while(0)
-#define assert_unconditional_r(message) do {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(!#message);} while(0)
+#define assert_message_r(condition, message) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!#message);}} while(0)
+#define assert_unconditional_r(message) do {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!#message);} while(0)
 
 #define assert_and_return_r(condition, returnValue) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__); assert_debug_only(!#condition); return returnValue;}} while(0)
-#define assert_and_return_unconditional_r(message, returnValue) do {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(!#message); return returnValue;} while(0)
-#define assert_and_return_message_r(condition, message, returnValue) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logMessage(message, __FUNCTION__, __LINE__); assert_debug_only(!#message); return returnValue;}} while(0)
+#define assert_and_return_unconditional_r(message, returnValue) do {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!#message); return returnValue;} while(0)
+#define assert_and_return_message_r(condition, message, returnValue) do {if (!static_cast<bool>(condition)) {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!#message); return returnValue;}} while(0)
