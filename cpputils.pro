@@ -4,7 +4,7 @@ TARGET = cpputils
 CONFIG += staticlib
 CONFIG -= qt
 
-CONFIG += strict_c++
+CONFIG += strict_c++ c++2a
 
 mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
@@ -66,7 +66,7 @@ win*{
 }
 
 linux*|mac*|freebsd{
-	QMAKE_CXXFLAGS += -pedantic-errors -std=c++2a
+	QMAKE_CXXFLAGS += -pedantic-errors
 	QMAKE_CFLAGS += -pedantic-errors
 	QMAKE_CXXFLAGS_WARN_ON = -Wall -Wno-c++11-extensions -Wno-local-type-template-args -Wno-deprecated-register
 
