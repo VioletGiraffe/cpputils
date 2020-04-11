@@ -1,7 +1,7 @@
 #ifndef SHA3_H
 #define SHA3_H
 
-#include "../compiler/compiler_warnings_control.h"
+#include "compiler/compiler_warnings_control.h"
 
 #include <stdint.h>
 
