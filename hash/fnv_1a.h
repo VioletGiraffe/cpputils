@@ -28,4 +28,3 @@ public:
 private:
 	uint64_t _hash = 14695981039346656037ULL;
 };
-
