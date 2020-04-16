@@ -11,29 +11,41 @@
 template <size_t NBits>
 class Sha3_Hasher {
 public:
-	inline Sha3_Hasher() noexcept {
+	Sha3_Hasher() noexcept
+	{
 		if constexpr (NBits == 256)
 			sha3_Init256(&_c);
 		else if constexpr (NBits == 384)
-				sha3_Init384(&_c);
+			sha3_Init384(&_c);
 		else if constexpr (NBits == 256)
-				sha3_Init512(&_c);
+			sha3_Init512(&_c);
 		else
 			static_assert(NBits == 256, "The following SHA3 width is supported: 256, 384, 512 bits");
 	}
 
-	inline void update(const void * const bufIn, const size_t len) noexcept {
+	void update(const void * const bufIn, const size_t len) noexcept
+	{
 		assert(!_finalized);
-		sha3_Update(&_c, bufIn, len);
+		if (len > 0) // it's unclear whether sha3_Update support 0 length. In fact, it seems to underflow it and enter an [almost] infinite loop.
+			sha3_Update(&_c, bufIn, len);
+		else
+			assert(len > 0);
 	}
 
-	template <typename T>
-	inline void update(T&& value) noexcept {
-		static_assert(std::is_trivial_v<std::remove_reference_t<T>>);
+	void update(const std::string& str) noexcept
+	{
+		this->update(str.data(), str.size());
+	}
+
+	template <typename T, typename = std::enable_if_t<is_trivially_serializable_v<std::remove_reference_t<T>>>>
+	void update(T&& value) noexcept
+	{
+		static_assert(is_trivially_serializable_v<std::remove_reference_t<T>>);
 		this->update(std::addressof(value), sizeof(value));
 	}
 
-	inline std::array<uint8_t, NBits / 8> getHash() noexcept {
+	std::array<uint8_t, NBits / 8> getHash() noexcept
+	{
 		assert(!_finalized);
 
 		const void* const hashData = sha3_Finalize(&_c);
@@ -43,7 +55,8 @@ public:
 		return hashDataArray;
 	}
 
-	inline uint64_t get64BitHash() noexcept {
+	uint64_t get64BitHash() noexcept
+	{
 		const auto fullHash = getHash();
 
 		uint64_t hash64 = 0;
