@@ -10,6 +10,8 @@
 //-----------------------------------------------------------------------------
 
 void MurmurHash3_x64_128(const void * key, int len, uint32_t seed, void * out);
+void MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out);
+void MurmurHash3_x86_32(const void* key, int len, void* out);
 
 uint64_t MurmurHash3_x64_64(const void * key, int len);
 std::array<uint8_t, 16> MurmurHash3_x64_128(const void * key, int len);
