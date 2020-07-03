@@ -54,7 +54,7 @@ INCLUDEPATH += \
 
 win*{
 	QMAKE_CXXFLAGS += /MP /Zi
-	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus
+	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus /Zc:char8_t
 	DEFINES += WIN32_LEAN_AND_MEAN NOMINMAX
 	QMAKE_CXXFLAGS_WARN_ON = /W4
 
