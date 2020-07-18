@@ -17,7 +17,7 @@ public:
 			sha3_Init256(&_c);
 		else if constexpr (NBits == 384)
 			sha3_Init384(&_c);
-		else if constexpr (NBits == 256)
+		else if constexpr (NBits == 512)
 			sha3_Init512(&_c);
 		else
 			static_assert(NBits == 256, "The following SHA3 width is supported: 256, 384, 512 bits");
