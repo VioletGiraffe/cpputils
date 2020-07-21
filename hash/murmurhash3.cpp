@@ -9,6 +9,8 @@
 
 #include "murmurhash3.h"
 
+#include <string.h> // memcpy
+
 //-----------------------------------------------------------------------------
 // Platform-specific functions and macros
 
