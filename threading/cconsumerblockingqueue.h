@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <utility>
 
 template <typename T>
 class CConsumerBlockingQueue
@@ -20,7 +21,9 @@ public:
 		size_t queueSize; // The current queue size after the operation
 	};
 	// Non-blocking
-	QueuePushResult try_push(const T& item);
+	template <typename U>
+	QueuePushResult try_push(U &&item);
+
 	// Non-blocking
 	bool try_pop(T& item);
 	// Blocking
@@ -96,17 +99,16 @@ bool CConsumerBlockingQueue<T>::pop(T& receiver, const uint32_t timeout_ms)
 	return false;
 }
 
-template <typename T>
-typename CConsumerBlockingQueue<T>::QueuePushResult CConsumerBlockingQueue<T>::try_push(const T& item)
+template<typename T>
+template<typename U>
+typename CConsumerBlockingQueue<T>::QueuePushResult CConsumerBlockingQueue<T>::try_push(U &&item)
 {
-	{
-		std::lock_guard<std::mutex> lock(_mutex);
-		const auto queueSize = _queue.size();
-		if (_queue.size() >= _maxSize) // No more space in the queue
-			return { false, queueSize };
+	std::lock_guard<std::mutex> lock(_mutex);
+	const auto queueSize = _queue.size();
+	if (_queue.size() >= _maxSize) // No more space in the queue
+		return { false, queueSize };
 
-		_queue.push_back(item);
-		_cond.notify_one();
-		return { true, queueSize + 1 };
-	}
+	_queue.emplace_back(std::forward<U>(item));
+	_cond.notify_one();
+	return { true, queueSize + 1 };
 }
