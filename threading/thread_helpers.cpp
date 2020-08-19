@@ -6,6 +6,8 @@
 
 #include <windows.h>
 
+#include <array> // std::size
+
 const DWORD MS_VC_EXCEPTION = 0x406D1388;
 
 #pragma pack(push,8)
@@ -20,14 +22,10 @@ typedef struct tagTHREADNAME_INFO
 
 void setThreadName(const char *asciiName)
 {
-	THREADNAME_INFO info;
-	info.szName = asciiName;
-
-	__try {
-		RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info);
-	}
-	__except (GetExceptionCode() == MS_VC_EXCEPTION){
-	}
+	WCHAR multibyteName[256];
+	const auto nChars = ::MultiByteToWideChar(CP_UTF8, 0, asciiName, -1, multibyteName, std::size(multibyteName));
+	multibyteName[nChars] = 0;
+	::SetThreadDescription(::GetCurrentThread(), multibyteName);
 }
 
 #elif defined __APPLE__
