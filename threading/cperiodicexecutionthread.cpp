@@ -33,14 +33,12 @@ void CPeriodicExecutionThread::setWorkload(const std::function<void()>& workload
 		assert_unconditional_r("The thread has already started");
 }
 
-void CPeriodicExecutionThread::start(const std::function<void()>& workload /*= std::function<void ()>()*/)
+void CPeriodicExecutionThread::start(std::function<void()>&& workload, uint32_t delayBeforeStartMs)
 {
 	if (!_thread.joinable())
 	{
-		if (workload)
-			_workload = workload;
-
-		_thread = std::thread(&CPeriodicExecutionThread::threadFunc, this);
+		_workload = std::move(workload);
+		_thread = std::thread(&CPeriodicExecutionThread::threadFunc, this, delayBeforeStartMs);
 	}
 	else
 		assert_unconditional_r("The thread has already started");
@@ -56,15 +54,18 @@ void CPeriodicExecutionThread::terminate()
 	}
 }
 
-void CPeriodicExecutionThread::threadFunc()
+void CPeriodicExecutionThread::threadFunc(uint32_t delayBeforeStartMs)
 {
-	assert_and_return_r(_workload, );
-
 	setThreadName(_threadName.c_str());
+
+	assert_and_return_r(_workload, );
 
 	DEBUG_LOG("Starting CPeriodicExecutionThread" << QString::fromStdString(_threadName));
 
-	while (!_terminate) // Main threadFunc loop
+	if (delayBeforeStartMs > 0)
+		std::this_thread::sleep_for(std::chrono::milliseconds(delayBeforeStartMs));
+
+	while (!_terminate) // Main workload loop
 	{
 		_workload();
 

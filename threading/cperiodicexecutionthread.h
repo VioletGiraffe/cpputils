@@ -18,12 +18,12 @@ public:
 
 	void setWorkload(const std::function<void ()>& workload);
 
-	void start(const std::function<void ()>& workload = std::function<void ()>());
+	void start(std::function<void ()>&& workload, uint32_t delayBeforeStartMs = 0);
 
 	void terminate();
 
 private:
-	void threadFunc();
+	void threadFunc(uint32_t delayBeforeStartMs);
 
 private:
 	std::function<void ()> _workload;
