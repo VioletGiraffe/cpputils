@@ -29,7 +29,7 @@ private:
 	std::function<void ()> _workload;
 	std::thread            _thread;
 	std::string            _threadName;
-	const unsigned int     _period = std::numeric_limits<unsigned int>::max(); // milliseconds
+	const uint32_t         _period = std::numeric_limits<unsigned int>::max(); // milliseconds
 
 	std::atomic<bool>      _terminate {false};
 };

@@ -62,14 +62,29 @@ void CPeriodicExecutionThread::threadFunc(uint32_t delayBeforeStartMs)
 
 	DEBUG_LOG("Starting CPeriodicExecutionThread" << QString::fromStdString(_threadName));
 
+	constexpr const uint32_t sleepChunkLength = 100u;
+	const auto nSleepChunks = _period / sleepChunkLength;
+	const auto remainder = _period % sleepChunkLength;
+
 	if (delayBeforeStartMs > 0)
-		std::this_thread::sleep_for(std::chrono::milliseconds(delayBeforeStartMs));
+	{
+		uint32_t elapsed = 0;
+		while (elapsed < delayBeforeStartMs && !_terminate)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(sleepChunkLength));
+			elapsed += sleepChunkLength;
+		}
+	}
 
 	while (!_terminate) // Main workload loop
 	{
+		
 		_workload();
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(_period));
+		for (uint32_t i = 0; i < nSleepChunks && !_terminate; ++i)
+			std::this_thread::sleep_for(std::chrono::milliseconds(sleepChunkLength));
+		if (remainder != 0 && !_terminate)
+			std::this_thread::sleep_for(std::chrono::milliseconds(remainder));
 	}
 
 	DEBUG_LOG("CPeriodicExecutionThread" << QString::fromStdString(_threadName) << "finished and exiting");
