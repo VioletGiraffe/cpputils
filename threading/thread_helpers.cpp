@@ -23,7 +23,7 @@ typedef struct tagTHREADNAME_INFO
 void setThreadName(const char *asciiName)
 {
 	WCHAR multibyteName[256];
-	const auto nChars = ::MultiByteToWideChar(CP_UTF8, 0, asciiName, -1, multibyteName, std::size(multibyteName));
+	const auto nChars = ::MultiByteToWideChar(CP_UTF8, 0, asciiName, -1, multibyteName, static_cast<int>(std::size(multibyteName)));
 	multibyteName[nChars] = 0;
 	::SetThreadDescription(::GetCurrentThread(), multibyteName);
 }
