@@ -1,8 +1,9 @@
 #pragma once
 
+#include "lang/type_traits_fast.hpp"
+
 #include <atomic>
 #include <functional>
-#include <limits>
 #include <string>
 #include <thread>
 
@@ -29,7 +30,7 @@ private:
 	std::function<void ()> _workload;
 	std::thread            _thread;
 	std::string            _threadName;
-	const uint32_t         _period = std::numeric_limits<unsigned int>::max(); // milliseconds
+	const uint32_t         _period = uint32_max; // milliseconds
 
 	std::atomic<bool>      _terminate {false};
 };
