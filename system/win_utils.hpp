@@ -5,6 +5,8 @@
 
 #include <Objbase.h>
 
+#include <string>
+
 class CoInitHelper {
 public:
 	inline explicit CoInitHelper(COINIT threadingMode) {
@@ -26,6 +28,9 @@ public:
 private:
 	bool _initializationSucceeded = false;
 };
+
+[[nodiscard]] std::string ErrorStringFromErrorCode(DWORD errCode) noexcept;
+[[nodiscard]] std::string ErrorStringFromLastError() noexcept;
 
 #define CO_INIT_HELPER(threadingMode) CoInitHelper _co_init_helper{threadingMode}
 
