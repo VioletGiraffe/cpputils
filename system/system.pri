@@ -1,7 +1,8 @@
 HEADERS += \
     $$PWD/ctimeelapsed.h \
     $$PWD/processfilepath.hpp \
-    $$PWD/consoleapplicationexithandler.h
+    $$PWD/consoleapplicationexithandler.h \
+    $$PWD/win_utils.hpp
 
 SOURCES += \
     $$PWD/ctimeelapsed.cpp \
