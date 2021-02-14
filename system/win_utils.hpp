@@ -31,6 +31,7 @@ private:
 
 [[nodiscard]] std::string ErrorStringFromErrorCode(DWORD errCode) noexcept;
 [[nodiscard]] std::string ErrorStringFromLastError() noexcept;
+[[nodiscard]] std::string ErrorStringFromHRESULT(HRESULT hr) noexcept;
 
 #define CO_INIT_HELPER(threadingMode) CoInitHelper _co_init_helper{threadingMode}
 
