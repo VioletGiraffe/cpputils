@@ -3,25 +3,25 @@
 #ifdef _WIN32
 #include "../assert/advanced_assert.h"
 
-#include <Objbase.h>
+#include <objbase.h>
 
 #include <string>
 
 class CoInitHelper {
 public:
-	inline explicit CoInitHelper(COINIT threadingMode) {
+	inline explicit CoInitHelper(COINIT threadingMode) noexcept {
 
 		const auto hr = ::CoInitializeEx(nullptr, threadingMode);
 		_initializationSucceeded = (hr == S_OK || hr == S_FALSE);
 		assert_r(_initializationSucceeded);
 	}
 
-	inline ~CoInitHelper() {
+	inline ~CoInitHelper() noexcept {
 		if (_initializationSucceeded)
 			::CoUninitialize();
 
 	}
-	inline bool success() const {
+	[[nodiscard]] inline bool success() const noexcept {
 		return _initializationSucceeded;
 	}
 
