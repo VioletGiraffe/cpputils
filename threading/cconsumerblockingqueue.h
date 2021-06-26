@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 template <typename T>
@@ -23,6 +24,10 @@ public:
 	// Non-blocking
 	template <typename U>
 	QueuePushResult try_push(U &&item);
+
+	// Blocking; returns the size of the queue after pushing into it
+	template <typename U>
+	size_t push(U &&item);
 
 	// Non-blocking
 	bool try_pop(T& item);
@@ -105,10 +110,28 @@ typename CConsumerBlockingQueue<T>::QueuePushResult CConsumerBlockingQueue<T>::t
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 	const auto queueSize = _queue.size();
-	if (_queue.size() >= _maxSize) // No more space in the queue
+	if (queueSize >= _maxSize) // No more space in the queue
 		return { false, queueSize };
 
 	_queue.emplace_back(std::forward<U>(item));
 	_cond.notify_one();
 	return { true, queueSize + 1 };
+}
+
+template<typename T>
+template<typename U>
+size_t CConsumerBlockingQueue<T>::push(U &&item)
+{
+	std::unique_lock lck{_mutex};
+	std::size_t queueSize = 0;
+	while ((queueSize = _queue.size()) >= _maxSize) // No more space in the queue
+	{
+		lck.unlock();
+		std::this_thread::yield();
+		lck.lock();
+	}
+
+	_queue.emplace_back(std::forward<U>(item));
+	_cond.notify_one();
+	return queueSize + 1;
 }

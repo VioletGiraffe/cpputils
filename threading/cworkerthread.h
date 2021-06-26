@@ -41,7 +41,7 @@ public:
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
 
 	// Returns the current queue length
-	size_t enqueue(const std::function<void()>& task);
+	size_t enqueue(std::function<void ()> task);
 
 	size_t maxWorkersCount() const;
 	size_t queueLength() const;

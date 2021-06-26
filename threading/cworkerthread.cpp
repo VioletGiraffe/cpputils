@@ -92,18 +92,9 @@ void CWorkerThreadPool::finishAllThreads()
 	_workerThreads.clear();
 }
 
-size_t CWorkerThreadPool::enqueue(const std::function<void ()>& task)
+size_t CWorkerThreadPool::enqueue(std::function<void ()> task)
 {
-	auto pushResult = _queue.try_push(task);
-	if (pushResult.pushed == false)
-	{
-		assert_unconditional_r("Max queue length exceeded, retrying...");
-		do {
-			pushResult = _queue.try_push(task);
-		} while (pushResult.pushed == false);
-	}
-
-	return pushResult.queueSize;
+	return _queue.push(std::move(task));
 }
 
 size_t CWorkerThreadPool::maxWorkersCount() const
