@@ -1,31 +1,30 @@
 #include "thread_helpers.h"
 
 #ifdef _WIN32
+#include "assert/advanced_assert.h"
+#include "utility/on_scope_exit.hpp"
 
-// As per https://docs.microsoft.com/en-us/visualstudio/debugger/how-to-set-a-thread-name-in-native-code
-
-#include <windows.h>
+#include <Windows.h>
 
 #include <array> // std::size
 
-const DWORD MS_VC_EXCEPTION = 0x406D1388;
-
-#pragma pack(push,8)
-typedef struct tagTHREADNAME_INFO
-{
-	DWORD dwType = 0x1000; // Must be 0x1000.
-	LPCSTR szName; // Pointer to name (in user addr space).
-	DWORD dwThreadID = (DWORD)-1; // Thread ID (-1=caller thread).
-	DWORD dwFlags = 0; // Reserved for future use, must be zero.
- } THREADNAME_INFO;
-#pragma pack(pop)
-
 void setThreadName(const char *asciiName)
 {
+	auto k32 = ::LoadLibraryA("kernel32.dll");
+	assert_and_return_r(k32, );
+
+	EXEC_ON_SCOPE_EXIT([k32]{
+		::FreeLibrary(k32);
+	});
+
+	auto func = (decltype(&::SetThreadDescription))(::GetProcAddress(k32, "SetThreadDescription"));
+	if (!func)
+		return;
+
 	WCHAR multibyteName[256];
 	const auto nChars = ::MultiByteToWideChar(CP_UTF8, 0, asciiName, -1, multibyteName, static_cast<int>(std::size(multibyteName)));
 	multibyteName[nChars] = 0;
-	::SetThreadDescription(::GetCurrentThread(), multibyteName);
+	func(::GetCurrentThread(), multibyteName);
 }
 
 #elif defined __APPLE__
