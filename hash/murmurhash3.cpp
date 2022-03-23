@@ -8,6 +8,8 @@
 // non-native version will be less than optimal.
 
 #include "murmurhash3.h"
+#include "../assert/advanced_assert.h"
+#include "lang/type_traits_fast.hpp"
 
 #include <string.h> // memcpy
 
@@ -333,18 +335,22 @@ void MurmurHash3_x64_128(const void* key, const int len,
 //-----------------------------------------------------------------------------
 
 
-std::array<uint8_t, 16> HashFunctions::MurmurHash3_x64_128(const void* key, size_t len)
+std::array<uint8_t, 16> MurmurHash3_x64_128(const void* key, size_t len)
 {
+	assert_debug_only(len <= static_cast<size_t>(int32_max));
+
 	std::array<uint8_t, 16> hash;
-	::MurmurHash3_x64_128(key, len, 104729, hash.data());
+	::MurmurHash3_x64_128(key, (int)len, 104729u, hash.data());
 
 	return hash;
 }
 
-uint64_t HashFunctions::MurmurHash3_x64_64(const void* key, size_t len)
+uint64_t MurmurHash3_x64_64(const void* key, size_t len)
 {
+	assert_debug_only(len <= static_cast<size_t>(int32_max));
+
 	uint64_t hash[2];
-	::MurmurHash3_x64_128(key, len, 104729, hash);
+	::MurmurHash3_x64_128(key, (int)len, 104729u, hash);
 
 	return hash[0] ^ hash[1];
 }
