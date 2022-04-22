@@ -5,15 +5,16 @@
 
 namespace regex_helpers {
 
-	template<class BidirIt, class Traits, class CharT, class UnaryFunction>
-	std::basic_string<CharT> regex_replace(BidirIt first, BidirIt last, const std::basic_regex<CharT,Traits>& re, UnaryFunction f)
+	template<class CharT, class CharTraits, class Alloc, class RegexTraits, class UnaryFunction>
+	[[nodiscard]] std::basic_string<CharT> regex_replace(const std::basic_string<CharT, CharTraits, Alloc>& str, const std::basic_regex<CharT, RegexTraits>& re, UnaryFunction f)
 	{
-		std::basic_string<CharT> s;
+		std::basic_string<CharT, CharTraits, Alloc> result;
 
-		typename std::match_results<BidirIt>::difference_type positionOfLastMatch = 0;
-		auto endOfLastMatch = first;
+		auto endOfLastMatch = str.cbegin();
+		using IteratorType = typename std::basic_string<CharT>::const_iterator;
+		typename std::match_results<IteratorType>::difference_type positionOfLastMatch = 0;
 
-		auto callback = [&](const std::match_results<BidirIt>& match)
+		auto callback = [&](const std::match_results<IteratorType>& match)
 		{
 			const auto positionOfThisMatch = match.position(0);
 			const auto diff = positionOfThisMatch - positionOfLastMatch;
@@ -21,8 +22,8 @@ namespace regex_helpers {
 			auto startOfThisMatch = endOfLastMatch;
 			std::advance(startOfThisMatch, diff);
 
-			s.append(endOfLastMatch, startOfThisMatch);
-			s.append(f(match));
+			result.append(endOfLastMatch, startOfThisMatch);
+			result.append(f(match));
 
 			auto lengthOfMatch = match.length(0);
 
@@ -32,17 +33,11 @@ namespace regex_helpers {
 			std::advance(endOfLastMatch, lengthOfMatch);
 		};
 
-		std::regex_iterator<BidirIt> begin(first, last, re), end;
+		std::regex_iterator<IteratorType> begin(str.cbegin(), str.cend(), re), end;
 		std::for_each(begin, end, callback);
 
-		s.append(endOfLastMatch, last);
+		result.append(endOfLastMatch, str.cend());
 
-		return s;
-	}
-
-	template<class Traits, class CharT, class UnaryFunction>
-	std::string regex_replace(const std::string& s, const std::basic_regex<CharT,Traits>& re, UnaryFunction f)
-	{
-		return regex_replace(s.cbegin(), s.cend(), re, f);
+		return result;
 	}
 }
