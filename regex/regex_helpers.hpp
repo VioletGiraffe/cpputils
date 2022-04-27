@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../assert/advanced_assert.h"
+
 #include <regex>
 #include <string>
 
@@ -39,5 +41,19 @@ namespace regex_helpers {
 		result.append(endOfLastMatch, str.cend());
 
 		return result;
+	}
+
+	template<class CharT, class CharTraits, class Alloc>
+	[[nodiscard]] std::basic_string<CharT> replace_match(
+		const std::basic_string<CharT, CharTraits, Alloc>& str,
+		const std::match_results<typename std::basic_string<CharT, CharTraits, Alloc>::const_iterator>& match,
+		const size_t index,
+		const std::basic_string<CharT, CharTraits, Alloc>& replaceWith)
+	{
+		const auto pos0 = match.position(0), posN = match.position(index);
+		const auto matchLength0 = match.length(0), matchLengthN = match.length(index);
+		return str.substr(pos0, posN - pos0)
+			+ replaceWith
+			+ str.substr(posN + matchLengthN, pos0 + matchLength0 - posN - matchLengthN);
 	}
 }
