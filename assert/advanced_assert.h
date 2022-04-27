@@ -1,7 +1,8 @@
 #pragma once
 
+#include "string/string_helpers.hpp"
+
 #include <functional>
-#include <sstream>
 
 class AdvancedAssert
 {
@@ -11,9 +12,9 @@ public:
 	inline static void logAssertion(const char* condition, const char* func, int line) {
 		if (_loggingFunc)
 		{
-			std::ostringstream stream;
+			std::string stream;
 			stream << "Assertion failed at " << func << ", line " << line << ": " << condition;
-			_loggingFunc(stream.str().c_str());
+			_loggingFunc(stream.c_str());
 		}
 	}
 
@@ -21,9 +22,9 @@ public:
 		if (!_loggingFunc)
 			return;
 
-		std::ostringstream stream;
+		std::string stream;
 		stream << func << ", line " << line << ": " << message;
-		_loggingFunc(stream.str().c_str());
+		_loggingFunc(stream.c_str());
 	}
 
 private:
