@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <type_traits>
 
-[[nodiscard]] inline uint64_t FNV_1a_64(const void* const data, const size_t length)
+[[nodiscard]] inline constexpr uint64_t FNV_1a_64(const void* const data, const size_t length)
 {
 	uint64_t hash = 14695981039346656037ULL;
 	for (const char* bytePtr = static_cast<const char*>(data), *end = bytePtr + length; bytePtr != end; ++bytePtr)
@@ -12,7 +12,7 @@
 	return hash;
 }
 
-[[nodiscard]] inline uint32_t FNV_1a_32(const void* const data, const size_t length)
+[[nodiscard]] inline constexpr uint32_t FNV_1a_32(const void* const data, const size_t length)
 {
 	uint32_t hash = 2166136261U;
 	for (const char* bytePtr = static_cast<const char*>(data), *end = bytePtr + length; bytePtr != end; ++bytePtr)
@@ -27,22 +27,22 @@ class FNV_1a_64_hasher {
 
 public:
 	template <typename T>
-	void updateHash(const T& value) noexcept {
+	inline constexpr void updateHash(const T& value) noexcept {
 		static_assert(std::is_trivial_v<T>);
 		for (const char* bytePtr = reinterpret_cast<const char*>(std::addressof(value)), *end = bytePtr + sizeof(value); bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint64_t>(*bytePtr)) * fnv_prime;
 	}
 
-	inline void updateHash(const void* const data, const size_t length) noexcept {
+	inline constexpr void updateHash(const void* const data, const size_t length) noexcept {
 		for (const char* bytePtr = static_cast<const char*>(data), *end = bytePtr + length; bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint64_t>(*bytePtr)) * fnv_prime;
 	}
 
-	[[nodiscard]] inline uint64_t hash() const noexcept {
+	[[nodiscard]] inline constexpr uint64_t hash() const noexcept {
 		return _hash;
 	}
 
-	inline void reset() noexcept {
+	inline constexpr void reset() noexcept {
 		_hash = fnv_offset_basis;
 	}
 
@@ -56,22 +56,22 @@ class FNV_1a_32_hasher {
 
 public:
 	template <typename T>
-	void updateHash(const T& value) noexcept {
+	inline constexpr void updateHash(const T& value) noexcept {
 		static_assert(std::is_trivial_v<T>);
 		for (const char* bytePtr = reinterpret_cast<const char*>(std::addressof(value)), *end = bytePtr + sizeof(value); bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint32_t>(*bytePtr)) * fnv_prime;
 	}
 
-	inline void updateHash(const void* const data, const size_t length) noexcept {
+	inline constexpr void updateHash(const void* const data, const size_t length) noexcept {
 		for (const char* bytePtr = static_cast<const char*>(data), *end = bytePtr + length; bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint32_t>(*bytePtr)) * fnv_prime;
 	}
 
-	[[nodiscard]] inline uint32_t hash() const noexcept {
+	[[nodiscard]] inline constexpr  uint32_t calculatedHash() const noexcept {
 		return _hash;
 	}
 
-	inline void reset() noexcept {
+	inline constexpr void reset() noexcept {
 		_hash = fnv_offset_basis;
 	}
 
