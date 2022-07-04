@@ -56,15 +56,19 @@ class FNV_1a_32_hasher {
 
 public:
 	template <typename T>
-	inline constexpr void updateHash(const T& value) noexcept {
+	inline constexpr uint32_t updateHash(const T& value) noexcept {
 		static_assert(std::is_trivial_v<T>);
 		for (const char* bytePtr = reinterpret_cast<const char*>(std::addressof(value)), *end = bytePtr + sizeof(value); bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint32_t>(*bytePtr)) * fnv_prime;
+
+		return _hash;
 	}
 
-	inline constexpr void updateHash(const void* const data, const size_t length) noexcept {
+	inline constexpr uint32_t updateHash(const void* const data, const size_t length) noexcept {
 		for (const char* bytePtr = static_cast<const char*>(data), *end = bytePtr + length; bytePtr != end; ++bytePtr)
 			_hash = (_hash ^ static_cast<uint32_t>(*bytePtr)) * fnv_prime;
+
+		return _hash;
 	}
 
 	[[nodiscard]] inline constexpr  uint32_t calculatedHash() const noexcept {
