@@ -19,18 +19,19 @@ class CWorkerThreadPool
 		CWorkerThread(const CWorkerThread&) = delete;
 		CWorkerThread& operator=(const CWorkerThread&) = delete;
 
-		void start();
+		[[nodiscard]] bool isStarted() const noexcept;
+
 		void stop();
 
 	private:
-		void threadFunc();
+		void threadFunc() noexcept;
 
 	private:
-		std::thread _thread;
-		const std::string _threadName;
 		CConsumerBlockingQueue<std::function<void()>>& _queue;
+		const std::string _threadName;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
+		std::thread _thread;
 	};
 
 public:
@@ -42,6 +43,8 @@ public:
 
 	// Returns the current queue length
 	size_t enqueue(std::function<void ()> task);
+	// Blocks until all the worker threads are started
+	void waitUntilStarted() noexcept;
 
 	size_t maxWorkersCount() const;
 	size_t queueLength() const;

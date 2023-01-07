@@ -14,4 +14,10 @@
 *.suo
 *.opensdf 
 Makefile
+Makefile.*
 /.qmake.stash
+
+tests/.vs/
+tests/bin/
+debug/
+release/

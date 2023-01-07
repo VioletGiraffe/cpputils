@@ -9,7 +9,8 @@
 
 CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<std::function<void ()> >& queue, std::string threadName) :
 	_threadName(std::move(threadName)),
-	_queue(queue)
+	_queue(queue),
+	_thread{ &CWorkerThread::threadFunc, this }
 {
 }
 
@@ -18,16 +19,9 @@ CWorkerThreadPool::CWorkerThread::~CWorkerThread()
 	stop();
 }
 
-void CWorkerThreadPool::CWorkerThread::start()
+bool CWorkerThreadPool::CWorkerThread::isStarted() const noexcept
 {
-	if (_working)
-		return;
-
-	if (_thread.joinable())
-		_thread.join();
-
-	_working = true;
-	_thread = std::thread(&CWorkerThread::threadFunc, this);
+	return _working;
 }
 
 void CWorkerThreadPool::CWorkerThread::stop()
@@ -46,7 +40,7 @@ void CWorkerThreadPool::CWorkerThread::stop()
 	_working = false;
 }
 
-void CWorkerThreadPool::CWorkerThread::threadFunc()
+void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 {
 	_working = true;
 
@@ -83,7 +77,7 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName)
 	{
 		std::ostringstream stream;
 		stream << _poolName << " worker thread #" << i;
-		_workerThreads.emplace_back(_queue, stream.str()).start();
+		_workerThreads.emplace_back(_queue, stream.str());
 	}
 }
 
@@ -95,6 +89,17 @@ void CWorkerThreadPool::finishAllThreads()
 size_t CWorkerThreadPool::enqueue(std::function<void ()> task)
 {
 	return _queue.push(std::move(task));
+}
+
+void CWorkerThreadPool::waitUntilStarted() noexcept
+{
+	for (auto& th : _workerThreads)
+	{
+		while (!th.isStarted())
+		{
+			std::this_thread::yield();
+		}
+	}
 }
 
 size_t CWorkerThreadPool::maxWorkersCount() const
