@@ -54,7 +54,7 @@ jobs:
       run: |
         clang --version
         pushd tests
-        $Qt5_DIR/bin/qmake -r
+        $Qt5_DIR/bin/qmake -r -config release CONFIG+=release "DEFINES+=NDEBUG"
         make -j
         popd
 
@@ -68,7 +68,7 @@ jobs:
         g++ --version
 
         pushd tests
-        $Qt5_DIR/bin/qmake -r
+        $Qt5_DIR/bin/qmake -r -config release CONFIG+=release "DEFINES+=NDEBUG"
         make -j
         popd
 
