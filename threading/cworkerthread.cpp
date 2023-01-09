@@ -7,7 +7,7 @@
 #include <sstream>
 #include <utility>
 
-CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<std::function<void ()> >& queue, std::string threadName) :
+CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<TaskType>& queue, std::string threadName) :
 	_threadName(std::move(threadName)),
 	_queue(queue),
 	_thread{ &CWorkerThread::threadFunc, this }
@@ -54,7 +54,7 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 	{
 		while (!_terminate)
 		{
-			std::function<void()> task;
+			TaskType task;
 			if (_queue.pop(task, 5000))
 				task();
 		}
@@ -84,11 +84,6 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName)
 void CWorkerThreadPool::finishAllThreads()
 {
 	_workerThreads.clear();
-}
-
-size_t CWorkerThreadPool::enqueue(std::function<void ()> task)
-{
-	return _queue.push(std::move(task));
 }
 
 void CWorkerThreadPool::waitUntilStarted() noexcept

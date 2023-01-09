@@ -4,16 +4,19 @@
 
 #include <atomic>
 #include <deque>
-#include <functional>
+#include <future>
 #include <string>
 #include <thread>
+#include <utility>
+
+using TaskType = std::function<void()>;
 
 class CWorkerThreadPool
 {
 	class CWorkerThread
 	{
 	public:
-		CWorkerThread(CConsumerBlockingQueue<std::function<void()>>& queue, std::string threadName);
+		CWorkerThread(CConsumerBlockingQueue<TaskType>& queue, std::string threadName);
 		~CWorkerThread();
 
 		CWorkerThread(const CWorkerThread&) = delete;
@@ -27,7 +30,7 @@ class CWorkerThreadPool
 		void threadFunc() noexcept;
 
 	private:
-		CConsumerBlockingQueue<std::function<void()>>& _queue;
+		CConsumerBlockingQueue<TaskType>& _queue;
 		const std::string _threadName;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
@@ -42,7 +45,22 @@ public:
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
 
 	// Returns the current queue length
-	size_t enqueue(std::function<void ()> task);
+	template <typename F>
+	size_t enqueue(F&& task)
+	{
+		return _queue.push(std::forward<F>(task));
+	}
+
+	//template <typename F>
+	//std::future<void> enqueueWithFuture(F&& task)
+	//{
+	//	std::packaged_task<void()> packagedTask(std::forward<F>(task));
+	//	auto future = packagedTask.get_future();
+	//	_queue.push(std::move(packagedTask));
+
+	//	return future;
+	//}
+
 	// Blocks until all the worker threads are started
 	void waitUntilStarted() noexcept;
 
@@ -50,7 +68,7 @@ public:
 	size_t queueLength() const;
 
 private:
-	CConsumerBlockingQueue<std::function<void()>> _queue; // It may be important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
+	CConsumerBlockingQueue<TaskType> _queue; // It may be important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 	const std::string _poolName;
 	const size_t _maxNumThreads;
