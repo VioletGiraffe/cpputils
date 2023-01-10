@@ -9,7 +9,7 @@
 #include <thread>
 #include <utility>
 
-using TaskType = std::function<void()>;
+using TaskType = std::move_only_function<void()>;
 
 class CWorkerThreadPool
 {
@@ -51,15 +51,18 @@ public:
 		return _queue.push(std::forward<F>(task));
 	}
 
-	//template <typename F>
-	//std::future<void> enqueueWithFuture(F&& task)
-	//{
-	//	std::packaged_task<void()> packagedTask(std::forward<F>(task));
-	//	auto future = packagedTask.get_future();
-	//	_queue.push(std::move(packagedTask));
+	template <typename F>
+	std::future<void> enqueueWithFuture(F&& task)
+	{
+		std::promise<void> p;
+		auto future = p.get_future();
+		_queue.push([task{ std::move(task) }, p{ std::move(p) }] () mutable {
+			task();
+			p.set_value();
+		});
 
-	//	return future;
-	//}
+		return future;
+	}
 
 	// Blocks until all the worker threads are started
 	void waitUntilStarted() noexcept;
