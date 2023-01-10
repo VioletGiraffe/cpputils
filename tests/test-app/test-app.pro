@@ -37,6 +37,8 @@ linux*|mac*{
 
 *g++*:QMAKE_CXXFLAGS += -fconcepts
 
+DEFINES += CATCH_CONFIG_ENABLE_BENCHMARKING
+
 INCLUDEPATH += \
 	$${PWD}/../../ \ #self
 	$${PWD}/../../../cpp-template-utils \
