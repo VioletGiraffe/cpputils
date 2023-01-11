@@ -50,7 +50,8 @@ win32*:!*msvc2012:*msvc* {
 
 INCLUDEPATH += \
 	./ \
-	../cpp-template-utils/
+	../cpp-template-utils/ \
+	cpp-template-utils/ #for building tests in CI workflows
 
 win*{
 	QMAKE_CXXFLAGS += /MP /Zi /JMC
