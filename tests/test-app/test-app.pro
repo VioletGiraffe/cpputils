@@ -28,8 +28,10 @@ win*{
 }
 
 linux*|mac*{
+	QMAKE_CXXFLAGS -= -std=c++2a
+	QMAKE_CXXFLAGS += -std=c++2b
+
 	QMAKE_CXXFLAGS_WARN_ON = -Wall
-	QMAKE_CXXFLAGS += -std=c++2a
 
 	Release:DEFINES += NDEBUG=1
 	Debug:DEFINES += _DEBUG
