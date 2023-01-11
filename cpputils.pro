@@ -66,7 +66,7 @@ win*{
 }
 
 linux*|mac*|freebsd{
-	QMAKE_CXXFLAGS += -pedantic-errors
+	QMAKE_CXXFLAGS += -pedantic-errors -std=c++2b
 	QMAKE_CFLAGS += -pedantic-errors
 	QMAKE_CXXFLAGS_WARN_ON = -Wall
 
