@@ -66,8 +66,10 @@ win*{
 }
 
 linux*|mac*|freebsd{
-	QMAKE_CXXFLAGS -= -std=c++2a
-	QMAKE_CXXFLAGS += -std=c++2b
+	QMAKE_CXXFLAGS_RELEASE -= -std=c++2a
+	QMAKE_CXXFLAGS_DEBUG -= -std=c++2a
+	QMAKE_CXXFLAGS_RELEASE += -std=c++2b
+	QMAKE_CXXFLAGS_DEBUG += -std=c++2b
 
 	QMAKE_CXXFLAGS += -pedantic-errors
 	QMAKE_CFLAGS += -pedantic-errors
