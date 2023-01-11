@@ -32,9 +32,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
 
     - name: Install dependencies
-      uses: actions/checkout@v3
-      with:
-        repository: VioletGiraffe/cpp-template-utils 
+      run: git clone https://github.com/VioletGiraffe/cpp-template-utils
 
     - name: Windows
       if: startsWith(matrix.os, 'windows')
