@@ -23,9 +23,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+      with:
+        version: '6.4.*'
 
     - name: Install Qt
-      uses: jurplel/install-qt-action@v2
+      uses: jurplel/install-qt-action@v3
 
     - name: Windows - setup MSBuild
       if: startsWith(matrix.os, 'windows')
@@ -73,12 +75,12 @@ jobs:
 
     - name: Test run
       if: startsWith(matrix.os, 'macos')
-      run: ./tests/bin/tests.app/Contents/MacOS/tests
+      run: ./tests/bin/test-app.app/Contents/MacOS/tests
       
     - name: Test run
       if: startsWith(matrix.os, 'ubuntu')
-      run: ./tests/bin/tests
+      run: ./tests/bin/test-app
 
     - name: Test run
       if: startsWith(matrix.os, 'windows')
-      run: ./tests/bin/tests.exe
+      run: ./tests/bin/test-app.exe

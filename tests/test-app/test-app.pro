@@ -1,4 +1,4 @@
-CONFIG += strict_c++ c++2a
+CONFIG += strict_c++ c++_latest
 CONFIG -= qt
 
 TEMPLATE = app
@@ -28,11 +28,6 @@ win*{
 }
 
 linux*|mac*{
-	QMAKE_CXXFLAGS_RELEASE -= -std=c++2a
-	QMAKE_CXXFLAGS_DEBUG -= -std=c++2a
-	QMAKE_CXXFLAGS_RELEASE += -std=c++2b
-	QMAKE_CXXFLAGS_DEBUG += -std=c++2b
-
 	QMAKE_CXXFLAGS_WARN_ON = -Wall
 
 	Release:DEFINES += NDEBUG=1
