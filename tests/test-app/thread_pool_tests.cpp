@@ -3,6 +3,15 @@
 #include "utility/macro_utils.h"
 #include "threading/cworkerthread.h"
 
+using namespace std::chrono_literals;
+
+static void waitForFinished(CWorkerThreadPool& pool)
+{
+	while (pool.queueLength() > 0);
+	std::this_thread::yield();
+	std::this_thread::yield();
+}
+
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
 try {
@@ -72,10 +81,10 @@ TEST_CASE("Basic functionality", "[threadpool]")
 	SUCCEED();
 }
 
-TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
+static void bench(const size_t nThreads)
 {
-	int a = 0;
-	CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	std::atomic_int a = 0;
+	CWorkerThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t N = 100'000;
@@ -85,7 +94,7 @@ TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
 		for (size_t i = 0; i < N; ++i)
 			pool.enqueue([&a] {++a; });
 
-		while (pool.queueLength() > 0);
+		waitForFinished(pool);
 		REQUIRE(a == N);
 		return a + pool.queueLength();
 	};
@@ -123,4 +132,21 @@ TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
 		REQUIRE(pool.queueLength() == 0);
 		return a + pool.queueLength();
 	};
+}
+
+TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
+{
+	bench(1);
+}
+
+TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
+{
+	::printf("Hardware concurrency: %d\n", std::thread::hardware_concurrency());
+	bench(std::thread::hardware_concurrency());
+}
+
+TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
+{
+	::printf("Hardware concurrency: %d\n", std::thread::hardware_concurrency());
+	bench(4 * std::thread::hardware_concurrency());
 }
