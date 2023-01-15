@@ -93,7 +93,7 @@ static void bench(const size_t nThreads)
 		for (int i = 0; i < 100; ++i)
 		{
 			if (auto n = countResult(); n != N)
-				std::this_thread::yield();
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			else
 				break;
 		}
