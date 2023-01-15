@@ -1,7 +1,6 @@
 #include "cworkerthread.h"
 #include "thread_helpers.h"
 #include "assert/advanced_assert.h"
-#include "utility/on_scope_exit.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -46,10 +45,6 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 
 	setThreadName(_threadName.c_str());
 
-	EXEC_ON_SCOPE_EXIT([this]() {
-		_working = false;
-	});
-
 	try
 	{
 		while (!_terminate)
@@ -67,6 +62,8 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 	{
 		assert_unconditional_r("Unknown exception caught");
 	}
+
+	_working = false;
 }
 
 CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName) :

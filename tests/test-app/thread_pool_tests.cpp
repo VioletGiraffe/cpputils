@@ -3,14 +3,7 @@
 #include "utility/macro_utils.h"
 #include "threading/cworkerthread.h"
 
-using namespace std::chrono_literals;
-
-static void waitForFinished(CWorkerThreadPool& pool)
-{
-	while (pool.queueLength() > 0);
-	std::this_thread::yield();
-	std::this_thread::yield();
-}
+#include <array>
 
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
@@ -83,54 +76,72 @@ TEST_CASE("Basic functionality", "[threadpool]")
 
 static void bench(const size_t nThreads)
 {
-	std::atomic_int a = 0;
+	static constexpr size_t nWorkloadItems = 31;
+	std::array <std::atomic_uint32_t, nWorkloadItems> workloadItems;
+
 	CWorkerThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t N = 100'000;
 
-	BENCHMARK("No future") {
-		a = 0;
-		for (size_t i = 0; i < N; ++i)
-			pool.enqueue([&a] {++a; });
+	const auto countResult = [&workloadItems] {
+		return std::accumulate(workloadItems.begin(), workloadItems.end(), 0);
+	};
 
-		waitForFinished(pool);
-		REQUIRE(a == N);
-		return a + pool.queueLength();
+	const auto waitForCompletion = [&pool, &countResult] {
+		while (pool.queueLength() > 0);
+		for (int i = 0; i < 100; ++i)
+		{
+			if (auto n = countResult(); n != N)
+				std::this_thread::yield();
+			else
+				break;
+		}
+	};
+
+	BENCHMARK("No future") {
+		std::fill(workloadItems.begin(), workloadItems.end(), 0);
+		for (size_t i = 0; i < N; ++i)
+			pool.enqueue([&workloadItems, i{ i * 4999 }] { ++workloadItems[i % nWorkloadItems]; });
+
+		waitForCompletion();
+
+		REQUIRE(countResult() == N);
+		return pool.queueLength();
 	};
 
 	std::vector<std::future<void>> futures;
-	futures.reserve(N * 10);
+	futures.reserve(N * 105); // Catch2 usually does 100 bench runs, and the following test cannot clear the vector
 
 	BENCHMARK("With future - no wait") {
-		a = 0;
+		std::fill(workloadItems.begin(), workloadItems.end(), 0);
 		for (size_t i = 0; i < N; ++i)
 		{
-			futures.push_back(pool.enqueueWithFuture([&a] {++a; }));
+			futures.push_back(pool.enqueueWithFuture([&workloadItems, i{ i * 4999 }] { ++workloadItems[i % nWorkloadItems]; }));
 		}
 
 		while (pool.queueLength() > 0);
-		return a + pool.queueLength();
+		return pool.queueLength();
 	};
 
 	futures.clear();
+	REQUIRE(countResult() == N);
 	REQUIRE(pool.queueLength() == 0);
-	REQUIRE(a == N);
 
 	BENCHMARK("With future - waiting") {
-		a = 0;
+		std::fill(workloadItems.begin(), workloadItems.end(), 0);
 		for (size_t i = 0; i < N; ++i)
 		{
-			futures.push_back(pool.enqueueWithFuture([&a] {++a; }));
+			futures.push_back(pool.enqueueWithFuture([&workloadItems, i{ i * 4999 }] { ++workloadItems[i % nWorkloadItems]; }));
 		}
 
 		for (auto& f : futures)
 			f.get();
 
 		futures.clear();
-		REQUIRE(a == N);
+		REQUIRE(countResult() == N);
 		REQUIRE(pool.queueLength() == 0);
-		return a + pool.queueLength();
+		return pool.queueLength();
 	};
 }
 
@@ -141,12 +152,14 @@ TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
 
 TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
 {
-	::printf("Hardware concurrency: %d\n", std::thread::hardware_concurrency());
-	bench(std::thread::hardware_concurrency());
+	const auto nThreads = std::max(2u, std::thread::hardware_concurrency() - 1);
+	::printf("Hardware concurrency: %d\n", nThreads);
+	bench(nThreads);
 }
 
 TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
 {
-	::printf("Hardware concurrency: %d\n", std::thread::hardware_concurrency());
-	bench(4 * std::thread::hardware_concurrency());
+	const auto nThreads = 4 * std::thread::hardware_concurrency();
+	::printf("Threads: %d\n", nThreads);
+	bench(nThreads);
 }
