@@ -53,7 +53,7 @@ public:
 	}
 
 	template <typename F>
-	std::future<void> enqueueWithFuture(F&& task)
+	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task)
 	{
 		std::promise<void> p;
 		auto future = p.get_future();
@@ -68,8 +68,8 @@ public:
 	// Blocks until all the worker threads are started
 	void waitUntilStarted() noexcept;
 
-	size_t maxWorkersCount() const;
-	size_t queueLength() const;
+	[[nodiscard]] size_t maxWorkersCount() const;
+	[[nodiscard]] size_t queueLength() const;
 
 private:
 	CConsumerBlockingQueue<TaskType> _queue; // It may be important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
