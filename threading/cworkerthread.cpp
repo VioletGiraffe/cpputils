@@ -70,11 +70,12 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName)
 	_poolName(std::move(poolName)),
 	_maxNumThreads(maxNumThreads)
 {
+	_queues.resize(maxNumThreads);
 	for (size_t i = 1; i <= maxNumThreads; ++i)
 	{
 		std::ostringstream stream;
 		stream << _poolName << " worker thread #" << i;
-		_workerThreads.emplace_back(_queue, stream.str());
+		_workerThreads.emplace_back(_queues[i - 1], stream.str());
 	}
 }
 
@@ -101,5 +102,9 @@ size_t CWorkerThreadPool::maxWorkersCount() const
 
 size_t CWorkerThreadPool::queueLength() const
 {
-	return _queue.size();
+	size_t length = 0;
+	for (const auto& q : _queues)
+		length += q.size();
+
+	return length;
 }

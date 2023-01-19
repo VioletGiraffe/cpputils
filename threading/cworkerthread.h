@@ -49,15 +49,18 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task)
 	{
-		return _queue.push(std::forward<F>(task));
+		const auto index = ((size_t)std::addressof(task) / 1024 + 31) % _maxNumThreads;
+		return _queues[index].push(std::forward<F>(task));
 	}
 
 	template <typename F>
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task)
 	{
+		const auto index = ((size_t)std::addressof(task) / 1024 + 31) % _maxNumThreads;
+
 		std::promise<void> p;
 		auto future = p.get_future();
-		_queue.push([task{ std::move(task) }, p{ std::move(p) }] () mutable {
+		_queues[index].push([task{ std::move(task) }, p{ std::move(p) }] () mutable {
 			task();
 			p.set_value();
 		});
@@ -72,7 +75,8 @@ public:
 	[[nodiscard]] size_t queueLength() const;
 
 private:
-	CConsumerBlockingQueue<TaskType> _queue; // It may be important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
+	// It is important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
+	std::deque<CConsumerBlockingQueue<TaskType>> _queues;
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 	const std::string _poolName;
 	const size_t _maxNumThreads;
