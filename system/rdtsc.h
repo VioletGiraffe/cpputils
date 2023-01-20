@@ -17,7 +17,7 @@ inline uint64_t rdtsc()
 	#include <immintrin.h>
 #endif
 
-__forceinline uint64_t rdtsc()
+inline uint64_t rdtsc()
 {
 	return __rdtsc();
 }
