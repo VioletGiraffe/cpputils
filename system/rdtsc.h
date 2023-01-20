@@ -11,7 +11,7 @@ inline uint64_t rdtsc()
 }
 #else
 
-#ifdef __MSC_VER
+#ifdef _MSC_VER
 	#include <intrin.h>
 #else
 	#include <immintrin.h>
