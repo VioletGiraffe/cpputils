@@ -38,6 +38,10 @@ class CWorkerThreadPool
 		std::thread _thread;
 	};
 
+	inline static constexpr uint64_t reduce(uint32_t value, uint32_t range) {
+		return ((uint64_t)value * (uint64_t)range) >> 32;
+	}
+	
 public:
 	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
 	void finishAllThreads(); // Does the same thing the destructor does, but can be called when needed
@@ -49,14 +53,16 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task)
 	{
-		const auto index = ((size_t)std::addressof(task) / 1024 + 31) % _maxNumThreads;
+		const uint64_t timestamp = __rdtsc();
+		const size_t index = reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 		return _queues[index].push(std::forward<F>(task));
 	}
 
 	template <typename F>
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task)
 	{
-		const auto index = ((size_t)std::addressof(task) / 1024 + 31) % _maxNumThreads;
+		const uint64_t timestamp = __rdtsc();
+		const size_t index = reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 
 		std::promise<void> p;
 		auto future = p.get_future();
