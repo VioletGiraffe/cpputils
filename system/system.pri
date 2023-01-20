@@ -2,6 +2,7 @@ HEADERS += \
 	$$PWD/ctimeelapsed.h \
 	$$PWD/processfilepath.hpp \
 	$$PWD/consoleapplicationexithandler.h \
+	$$PWD/rdtsc.h \
 	$$PWD/win_utils.hpp
 
 SOURCES += \
