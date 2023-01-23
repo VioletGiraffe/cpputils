@@ -3,15 +3,16 @@
 #include "cconsumerblockingqueue.h"
 #include "system/rdtsc.h"
 
+#include "3rdparty/function2/function2.hpp"
+
 #include <atomic>
 #include <deque>
-#include <functional>
 #include <future>
 #include <string>
 #include <thread>
 #include <utility>
 
-using TaskType = std::move_only_function<void()>;
+using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
 
 class CWorkerThreadPool
 {
