@@ -10,6 +10,9 @@
 #include "murmurhash3.h"
 #include "../assert/advanced_assert.h"
 #include "lang/type_traits_fast.hpp"
+#include "compiler/compiler_warnings_control.h"
+
+DISABLE_CLANG_GCC_WARNING("-Wimplicit-fallthrough")
 
 #include <string.h> // memcpy
 

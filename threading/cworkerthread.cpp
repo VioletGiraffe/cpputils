@@ -7,8 +7,8 @@
 #include <utility>
 
 CWorkerThreadPool::CWorkerThread::CWorkerThread(CConsumerBlockingQueue<TaskType>& queue, std::string threadName) :
-	_threadName(std::move(threadName)),
 	_queue(queue),
+	_threadName(std::move(threadName)),
 	_thread{ &CWorkerThread::threadFunc, this }
 {
 }
