@@ -1,6 +1,6 @@
 #include "advanced_assert.h"
 
-#if defined _DEBUG == (defined NDEBUG || NDEBUG == 1)
+#if (defined _DEBUG) == (defined NDEBUG || NDEBUG == 1)
 #error "Either _DEBUG or NDEBUG=1 must be defined"
 #endif
 

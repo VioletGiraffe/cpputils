@@ -21,3 +21,4 @@ tests/.vs/
 tests/bin/
 debug/
 release/
+.qtc_clangd/

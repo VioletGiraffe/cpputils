@@ -39,9 +39,9 @@ class CWorkerThreadPool
 	private:
 		CConsumerBlockingQueue<TaskType>& _queue;
 		const std::string _threadName;
+		std::thread _thread;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
-		std::thread _thread;
 	};
 
 	inline static constexpr uint64_t reduce(uint32_t value, uint32_t range) {
