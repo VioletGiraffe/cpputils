@@ -3,7 +3,11 @@
 #include "cconsumerblockingqueue.h"
 #include "system/rdtsc.h"
 
+#include "compiler/compiler_warnings_control.h"
+
+DISABLE_COMPILER_WARNINGS
 #include "3rdparty/function2/function2.hpp"
+RESTORE_COMPILER_WARNINGS
 
 #include <atomic>
 #include <deque>
