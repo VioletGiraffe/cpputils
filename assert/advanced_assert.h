@@ -18,7 +18,7 @@ public:
 		}
 	}
 
-	inline static void logMessage(std::string message, const char* func, int line) {
+	inline static void logMessage(std::string_view message, const char* func, int line) {
 		if (!_loggingFunc)
 			return;
 
