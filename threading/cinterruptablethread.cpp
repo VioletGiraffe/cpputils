@@ -56,7 +56,7 @@ bool CInterruptableThread::running() const
 	return _running;
 }
 
-const std::atomic<bool>& CInterruptableThread::terminationFlag() const
+const std::atomic<bool>& CInterruptableThread::terminationFlag() const noexcept
 {
 	return _terminate;
 }

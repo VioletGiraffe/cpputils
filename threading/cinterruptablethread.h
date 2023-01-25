@@ -21,7 +21,7 @@ public:
 	void interrupt();
 	bool running() const;
 
-	const std::atomic<bool>& terminationFlag() const;
+	const std::atomic<bool>& terminationFlag() const noexcept;
 
 private:
 	std::string _threadName;
