@@ -3,12 +3,12 @@
 #include <string>
 #include <stdint.h>
 
-constexpr uint32_t jenkins_hash(std::string_view s) noexcept
+[[nodiscard]] consteval uint32_t jenkins_hash(std::string_view s) noexcept
 {
 	uint32_t hash = 0;
-	for (uint32_t i = 0; i < s.size(); ++i)
+	for (char c: s)
 	{
-		hash += s[i];
+		hash += static_cast<uint8_t>(c);
 		hash += (hash << 10);
 		hash ^= (hash >> 6);
 	}

@@ -58,14 +58,8 @@ public:
 	uint64_t get64BitHash() noexcept
 	{
 		const auto fullHash = getHash();
-
-		uint64_t hash64 = 0;
-		for (size_t offset = 0; offset < fullHash.size(); offset += sizeof(uint64_t))
-		{
-			const auto eightBytes = memory_cast<uint64_t>(fullHash.data() + offset);
-			hash64 ^= eightBytes;
-		}
-
+		// getting first 8 bytes of the hash - should be no better or worse than any other part, nor than XOR-folding multiple 8-byte chunks
+		const auto hash64 = memory_cast<uint64_t>(fullHash.data());
 		return hash64;
 	}
 

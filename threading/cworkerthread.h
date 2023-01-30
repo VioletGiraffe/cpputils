@@ -4,6 +4,7 @@
 #include "system/rdtsc.h"
 
 #include "compiler/compiler_warnings_control.h"
+#include "math/math.hpp"
 
 DISABLE_COMPILER_WARNINGS
 #include "3rdparty/function2/function2.hpp"
@@ -43,10 +44,6 @@ class CWorkerThreadPool
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
 	};
-
-	inline static constexpr uint64_t reduce(uint32_t value, uint32_t range) {
-		return ((uint64_t)value * (uint64_t)range) >> 32;
-	}
 	
 public:
 	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
@@ -60,7 +57,7 @@ public:
 	size_t enqueue(F&& task)
 	{
 		const uint64_t timestamp = rdtsc();
-		const size_t index = reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
+		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 		return _queues[index].push(std::forward<F>(task));
 	}
 
@@ -68,7 +65,7 @@ public:
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task)
 	{
 		const uint64_t timestamp = rdtsc();
-		const size_t index = reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
+		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 
 		std::promise<void> p;
 		auto future = p.get_future();
