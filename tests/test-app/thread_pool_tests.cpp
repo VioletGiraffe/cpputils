@@ -163,11 +163,3 @@ TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
 	::printf("Threads: %d\n", nThreads);
 	bench(nThreads);
 }
-
-#include "C:/DEV/ChromiumCrawler/cpp-template-utils/hash/woothash.hpp"
-#include <iostream>
-
-TEST_CASE("hash", "[hash]")
-{
-	std::cout << woothash64i(1);
-}
