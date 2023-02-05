@@ -12,4 +12,6 @@ inline constexpr int64_t int64_min = INT64_MIN;
 inline constexpr int64_t int64_max = INT64_MAX;
 inline constexpr size_t size_t_max = sizeof(size_t) == 8 ? UINT64_MAX : UINT32_MAX;
 
+inline constexpr float float_max = 3.402823e+38f;
+
 static_assert (sizeof(size_t) == 8 || sizeof(size_t) == 4);
