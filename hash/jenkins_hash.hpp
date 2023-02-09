@@ -3,9 +3,9 @@
 #include <string>
 #include <stdint.h>
 
-[[nodiscard]] consteval uint32_t jenkins_hash(std::string_view s) noexcept
+[[nodiscard]] consteval uint32_t jenkins_hash(std::string_view s, uint32_t seed = 0) noexcept
 {
-	uint32_t hash = 0;
+	uint32_t hash = seed;
 	for (char c: s)
 	{
 		hash += static_cast<uint8_t>(c);
