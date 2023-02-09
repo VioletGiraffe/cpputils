@@ -16,7 +16,7 @@ public:
 	explicit CInterruptableThread(const std::string& threadName, ExecBehavior behavior = InterruptIfRunning);
 	~CInterruptableThread();
 
-	bool exec(const std::function<void()>& executable);
+	bool exec(std::function<void()> executable);
 	// Signals the thread to stop and waits until the thread has exited via join()
 	void interrupt();
 	bool running() const;

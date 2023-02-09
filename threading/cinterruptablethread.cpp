@@ -13,7 +13,7 @@ CInterruptableThread::~CInterruptableThread()
 	interrupt();
 }
 
-bool CInterruptableThread::exec(const std::function<void ()>& executable)
+bool CInterruptableThread::exec(std::function<void ()> executable)
 {
 	if (!executable)
 		return false;
@@ -30,10 +30,10 @@ bool CInterruptableThread::exec(const std::function<void ()>& executable)
 	interrupt();
 	_terminate = false;
 
-	_thread = std::thread([this, executable](){
+	_thread = std::thread([this, payload{ std::move(executable) }]() {
 		_running = true;
 		setThreadName(_threadName.c_str());
-		executable();
+		payload();
 		_running = false;
 	});
 
