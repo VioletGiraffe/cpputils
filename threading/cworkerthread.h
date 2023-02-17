@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cconsumerblockingqueue.h"
-#include "system/rdtsc.h"
+#include "system/timing.h"
 
 #include "compiler/compiler_warnings_control.h"
 #include "math/math.hpp"
