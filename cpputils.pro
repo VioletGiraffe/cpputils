@@ -5,7 +5,13 @@ CONFIG += staticlib
 CONFIG -= qt
 CONFIG -= flat
 
-CONFIG += strict_c++ c++_latest
+CONFIG += strict_c++
+win*|mac*{
+	CONFIG += c++latest
+}
+else {
+	CONFIG += c++_latest #intentional typo
+}
 
 mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
