@@ -27,28 +27,30 @@ public:
 	};
 
 	// cppcheck-suppress noExplicitConstructor
-	Enum(EnumType initialValue = _items[0].id) : _id(initialValue)
+	Enum(EnumType initialValue = _items[0].id) noexcept : _id(initialValue)
 	{
 		assert_debug_only(isKnownItem(_id));
 	}
 
-	Enum(const Enum& other) : _id(other._id)
+	Enum(const Enum& other) noexcept : _id(other._id)
 	{
 	}
 
 	// cppcheck-suppress noExplicitConstructor
-	Enum(const EnumItem& item) : _id(item.id)
+	Enum(const EnumItem& item) noexcept : _id(item.id)
 	{
 		assert_debug_only(isKnownItem(_id));
 	}
 
-	Enum& operator=(const Enum& other)
+	~Enum() noexcept = default;
+
+	Enum& operator=(const Enum& other) noexcept
 	{
 		_id = other._id;
 		return *this;
 	}
 
-	Enum& operator=(EnumType newValue)
+	Enum& operator=(EnumType newValue) noexcept
 	{
 		assert_debug_only(isKnownItem(newValue));
 		_id = newValue;
