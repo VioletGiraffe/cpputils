@@ -17,7 +17,7 @@ void setThreadName(const char *asciiName)
 		::FreeLibrary(k32);
 	});
 
-	auto func = (decltype(&::SetThreadDescription))(::GetProcAddress(k32, "SetThreadDescription"));
+	auto func = reinterpret_cast<decltype(&::SetThreadDescription)>(::GetProcAddress(k32, "SetThreadDescription"));
 	if (!func)
 		return;
 

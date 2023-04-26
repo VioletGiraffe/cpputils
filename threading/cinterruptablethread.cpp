@@ -2,8 +2,8 @@
 #include "assert/advanced_assert.h"
 #include "thread_helpers.h"
 
-CInterruptableThread::CInterruptableThread(const std::string& threadName, ExecBehavior behavior /*= InterruptIfRunning*/) :
-	_threadName(threadName),
+CInterruptableThread::CInterruptableThread(std::string threadName, ExecBehavior behavior /*= InterruptIfRunning*/) :
+	_threadName{std::move(threadName)},
 	_behavior(behavior)
 {
 }

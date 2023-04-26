@@ -44,7 +44,7 @@ class CWorkerThreadPool
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
 	};
-	
+
 public:
 	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
 	void finishAllThreads(); // Does the same thing the destructor does, but can be called when needed
@@ -69,7 +69,7 @@ public:
 
 		std::promise<void> p;
 		auto future = p.get_future();
-		_queues[index].push([task{ std::move(task) }, p{ std::move(p) }] () mutable {
+		_queues[index].push([task{ std::forward<F>(task) }, p{ std::move(p) }] () mutable {
 			task();
 			p.set_value();
 		});

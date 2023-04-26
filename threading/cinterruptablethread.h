@@ -13,7 +13,7 @@ public:
 		SkipIfRunning
 	};
 
-	explicit CInterruptableThread(const std::string& threadName, ExecBehavior behavior = InterruptIfRunning);
+	explicit CInterruptableThread(std::string threadName, ExecBehavior behavior = InterruptIfRunning);
 	~CInterruptableThread();
 
 	bool exec(std::function<void()> executable);

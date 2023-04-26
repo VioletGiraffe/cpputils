@@ -28,7 +28,7 @@ void CTimeElapsed::resume()
 	_pausedFor += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - _pauseTimeStamp);
 }
 
-bool CTimeElapsed::paused()
+bool CTimeElapsed::paused() const
 {
 	return _paused;
 }

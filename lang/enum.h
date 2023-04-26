@@ -11,7 +11,7 @@ template <typename EnumType>
 class Enum
 {
 public:
-	typedef EnumType Enum_Type;
+	using Enum_Type = EnumType;
 
 	struct EnumItem {
 		bool operator==(EnumType value) const {
@@ -55,7 +55,7 @@ public:
 		return *this;
 	}
 
-	EnumType value() const
+	[[nodiscard]] EnumType value() const
 	{
 		return _id;
 	}
@@ -65,7 +65,7 @@ public:
 		return value();
 	}
 
-	static std::string itemName(const EnumType value)
+	[[nodiscard]] static std::string itemName(const EnumType value)
 	{
 		const auto item = findItem(value);
 
@@ -73,30 +73,30 @@ public:
 		return item->name;
 	}
 
-	std::string itemName() const
+	[[nodiscard]] std::string itemName() const
 	{
 		return itemName(_id);
 	}
 
-	static typename std::vector<EnumItem>::const_iterator begin()
+	[[nodiscard]] static typename std::vector<EnumItem>::const_iterator begin()
 	{
 		return std::begin(_items);
 	}
 
-	static typename std::vector<EnumItem>::const_iterator end()
+	[[nodiscard]] static typename std::vector<EnumItem>::const_iterator end()
 	{
 		return std::end(_items);
 	}
 
 private:
-	inline static typename std::vector<EnumItem>::const_iterator findItem(EnumType id)
+	[[nodiscard]] inline static typename std::vector<EnumItem>::const_iterator findItem(EnumType id)
 	{
 		return std::find_if(_items.cbegin(), _items.cend(), [id](const EnumItem& item) {
 			return item.id == id;
 		});
 	}
 
-	inline static bool isKnownItem(EnumType id)
+	[[nodiscard]] inline static bool isKnownItem(EnumType id)
 	{
 		return findItem(id) != _items.cend();
 	}
