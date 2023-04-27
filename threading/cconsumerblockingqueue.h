@@ -16,6 +16,7 @@ public:
 	CConsumerBlockingQueue(const CConsumerBlockingQueue<T>&) = delete;
 
 	explicit CConsumerBlockingQueue(size_t maxSize = static_cast<size_t>(int32_max));
+	~CConsumerBlockingQueue() noexcept = default;
 
 	struct QueuePushResult {
 		bool pushed; // True on success, false if maxSize is reached
@@ -32,7 +33,7 @@ public:
 	// Non-blocking
 	bool try_pop(T& item);
 	// Blocking
-	bool pop(T& receiver, const uint32_t timeout_ms = uint32_max);
+	bool pop(T& receiver, uint32_t timeout_ms = uint32_max);
 
 	// This method is needed for shutdown - to wake up all the threads that wait on this queue
 	void wakeAllThreads();

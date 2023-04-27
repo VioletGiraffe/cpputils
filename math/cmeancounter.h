@@ -3,10 +3,7 @@
 template <typename T> class CMeanCounter
 {
 public:
-
 	explicit CMeanCounter(float smoothingFactor = 0.1f) : _smoothingFactor(smoothingFactor) {}
-
-	CMeanCounter& operator=(const CMeanCounter& other) = delete;
 
 	void process(const T& value);
 	void reset();

@@ -10,14 +10,16 @@ class CExecutionQueue
 {
 	struct Executee
 	{
-		//Executee(const std::function<void ()>& code_, int tag = 0)
-		int tag;
+		int tag = 0;
 		std::function<void ()> code;
 	};
 
 
 public:
 	enum ExecutionMode {execFirst, execAll};
+
+	CExecutionQueue(const CExecutionQueue&) = delete;
+	CExecutionQueue& operator=(const CExecutionQueue&) = delete;
 
 	inline ~CExecutionQueue()
 	{

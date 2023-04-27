@@ -47,10 +47,12 @@ class CWorkerThreadPool
 
 public:
 	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
-	void finishAllThreads(); // Does the same thing the destructor does, but can be called when needed
+	~CWorkerThreadPool() noexcept = default;
 
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
+
+	void finishAllThreads(); // Does the same thing the destructor does, but can be called when needed
 
 	// Returns the current queue length
 	template <typename F>

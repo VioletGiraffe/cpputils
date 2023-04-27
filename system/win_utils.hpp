@@ -10,7 +10,6 @@
 class CoInitHelper {
 public:
 	inline explicit CoInitHelper(COINIT threadingMode) noexcept {
-
 		const auto hr = ::CoInitializeEx(nullptr, threadingMode);
 		_initializationSucceeded = (hr == S_OK || hr == S_FALSE);
 		assert_r(_initializationSucceeded);
@@ -21,6 +20,10 @@ public:
 			::CoUninitialize();
 
 	}
+
+	CoInitHelper(const CoInitHelper&) = delete;
+	CoInitHelper& operator=(const CoInitHelper&) = delete;
+
 	[[nodiscard]] inline bool success() const noexcept {
 		return _initializationSucceeded;
 	}
