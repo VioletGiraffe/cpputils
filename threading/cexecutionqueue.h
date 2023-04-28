@@ -18,6 +18,8 @@ class CExecutionQueue
 public:
 	enum ExecutionMode {execFirst, execAll};
 
+	CExecutionQueue() noexcept = default;
+
 	CExecutionQueue(const CExecutionQueue&) = delete;
 	CExecutionQueue& operator=(const CExecutionQueue&) = delete;
 
