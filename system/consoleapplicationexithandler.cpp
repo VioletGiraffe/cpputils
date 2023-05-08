@@ -32,7 +32,7 @@ void registerExithandler(std::function<bool ()>&& onExit)
 	exitHandler = std::move(onExit);
 
 #ifdef _WIN32
-	assert_r(SetConsoleCtrlHandler(CtrlHandler, TRUE));
+	assert_r(SetConsoleCtrlHandler(&CtrlHandler, TRUE));
 #else
 #endif
 }
