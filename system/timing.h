@@ -14,14 +14,17 @@
 
 #ifdef _MSC_VER
 	#include <intrin.h>
-#else
+#elif !defined __ARM_ARCH_ISA_A64
 	#include <immintrin.h>
 #endif
 
+#ifndef __ARM_ARCH_ISA_A64 // This condition is true for both 32-bit and 64-bit ARM
 [[nodiscard]] inline uint64_t rdtsc()
 {
 	return __rdtsc();
 }
+#else
+[[nodiscard]] uint64_t rdtsc();
 #endif
 
 // Monotonic clock that returns time elapsed in milliseconds since an unspecified point.

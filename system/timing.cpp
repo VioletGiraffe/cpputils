@@ -18,8 +18,8 @@ uint64_t timeElapsedMs()
 	return ::GetTickCount64();
 #elif defined __linux__
 	struct timespec ts;
-	if (::clock_gettime(CLOCK_MONOTONIC_RAW , &ts) != 0) [[unlikely]]
-		return 0;
+	while (clock_gettime(CLOCK_MONOTONIC_RAW, &val) != 0) [[unlikely]]
+		/* no body */;
 
 	return tsToMs(ts);
 #else
@@ -30,3 +30,14 @@ uint64_t timeElapsedMs()
 	return tsToMs(ts);
 #endif
 }
+
+#ifdef __ARM_ARCH_ISA_A64 // This condition is true for both 32-bit and 64-bit ARM
+[[nodiscard]] uint64_t rdtsc()
+{
+	struct timespec val;
+	while (clock_gettime(CLOCK_MONOTONIC_RAW, &val) != 0)
+	   /* no body */;
+
+	return (uint64_t)val.tv_sec * 1000000000ULL + (uint64_t)val.tv_nsec;
+}
+#endif
