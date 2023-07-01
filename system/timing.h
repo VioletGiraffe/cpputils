@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#ifdef __arm__
+#ifdef __ARM_ARCH_ISA_A64 // This condition is true for both 32-bit and 64-bit ARM
 // !!! BEWARE !!! This register is not synced between cores! only use as PRNG, not for timing
 [[nodiscard]] inline uint64_t rdtsc_fast_thread_local()
 {
@@ -18,7 +18,7 @@
 	#include <immintrin.h>
 #endif
 
-#ifndef __arm__ // This condition is true for both 32-bit and 64-bit ARM
+#ifndef __ARM_ARCH_ISA_A64
 [[nodiscard]] inline uint64_t rdtsc()
 {
 	return __rdtsc();
