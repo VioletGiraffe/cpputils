@@ -8,7 +8,7 @@
 	uint64_t ts;
 	asm volatile("mrs %0, cntvct_el0" : "=r" (ts));
 
-	return val;
+	return ts;
 }
 #endif
 
