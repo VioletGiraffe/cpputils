@@ -18,7 +18,7 @@ uint64_t timeElapsedMs()
 	return ::GetTickCount64();
 #elif defined __linux__
 	struct timespec ts;
-	while (clock_gettime(CLOCK_MONOTONIC_RAW, &val) != 0) [[unlikely]]
+	while (clock_gettime(CLOCK_MONOTONIC_RAW, &ts) != 0) [[unlikely]]
 		/* no body */;
 
 	return tsToMs(ts);
