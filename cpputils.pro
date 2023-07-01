@@ -17,7 +17,7 @@ mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
 	CONFIG(debug, debug|release):CONFIG *= Debug
 }
-contains(QT_ARCH, x86_64) {
+contains(QT_ARCH, x86_64)|contains(QT_ARCH, arm64) {
 	ARCHITECTURE = x64
 } else {
 	ARCHITECTURE = x86
