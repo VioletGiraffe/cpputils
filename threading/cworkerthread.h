@@ -58,7 +58,7 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task)
 	{
-		const uint64_t timestamp = rdtsc();
+		const uint64_t timestamp = rdtsc_fast_thread_local();
 		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 		return _queues[index].push(std::forward<F>(task));
 	}
@@ -66,7 +66,7 @@ public:
 	template <typename F>
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task)
 	{
-		const uint64_t timestamp = rdtsc();
+		const uint64_t timestamp = rdtsc_fast_thread_local();
 		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
 
 		std::promise<void> p;
