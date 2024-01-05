@@ -9,7 +9,7 @@ CTimeElapsed::CTimeElapsed(bool autoStart) noexcept
 
 void CTimeElapsed::start() noexcept
 {
-	_pausedFor = std::chrono::nanoseconds(0);
+	_previouslyAccumulatedTime = std::chrono::nanoseconds{ 0 };
 	_startTimeStamp = std::chrono::high_resolution_clock::now();
 	_paused = false;
 }
@@ -17,7 +17,7 @@ void CTimeElapsed::start() noexcept
 void CTimeElapsed::pause() noexcept
 {
 	assert_r(!_paused);
-	_pauseTimeStamp = std::chrono::high_resolution_clock::now();
+	_previouslyAccumulatedTime += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - _startTimeStamp);
 	_paused = true;
 }
 
@@ -25,7 +25,7 @@ void CTimeElapsed::resume() noexcept
 {
 	assert_r(_paused);
 	_paused = false;
-	_pausedFor += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - _pauseTimeStamp);
+	_startTimeStamp = std::chrono::high_resolution_clock::now();
 }
 
 bool CTimeElapsed::paused() const noexcept
