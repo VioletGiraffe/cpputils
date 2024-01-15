@@ -3,6 +3,7 @@
 #include "string/string_helpers.hpp"
 
 #include <functional>
+#include <string_view>
 
 class AdvancedAssert
 {
