@@ -17,11 +17,6 @@ mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
 	CONFIG(debug, debug|release):CONFIG *= Debug
 }
-contains(QT_ARCH, x86_64)|contains(QT_ARCH, arm64) {
-	ARCHITECTURE = x64
-} else {
-	ARCHITECTURE = x86
-}
 
 android {
 	Release:OUTPUT_DIR=android/release
@@ -32,8 +27,8 @@ android {
 	Debug:OUTPUT_DIR=ios/debug
 
 } else {
-	Release:OUTPUT_DIR=release/$${ARCHITECTURE}
-	Debug:OUTPUT_DIR=debug/$${ARCHITECTURE}
+	Release:OUTPUT_DIR=release
+	Debug:OUTPUT_DIR=debug
 }
 
 DESTDIR  = ../bin/$${OUTPUT_DIR}/
