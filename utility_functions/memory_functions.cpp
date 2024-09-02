@@ -3,7 +3,7 @@
 #include <string.h>
 #include <cstddef>
 
-const void* memmem(const void* haystack, const size_t haystackSize, const void* needle, const size_t needleSize) noexcept
+const void* memfind(const void* haystack, const size_t haystackSize, const void* needle, const size_t needleSize) noexcept
 {
 	if (needleSize == 0 || haystackSize == 0 || needleSize > haystackSize) [[unlikely]]
 		return nullptr;
