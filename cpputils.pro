@@ -3,7 +3,7 @@ TARGET = cpputils
 
 CONFIG += staticlib
 CONFIG -= qt
-CONFIG -= flat
+!win*:CONFIG -= flat
 
 CONFIG += strict_c++
 win*|mac*{
@@ -44,6 +44,7 @@ include (threading/threading.pri)
 include (assert/assert.pri)
 include (lang/lang.pri)
 include (hash/hash.pri)
+include (utility_functions/utility_functions.pri)
 
 win32*:!*msvc2012:*msvc* {
 	QMAKE_CXXFLAGS += /FS
