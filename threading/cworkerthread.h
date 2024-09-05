@@ -32,7 +32,7 @@ class CWorkerThreadPool
 
 		[[nodiscard]] bool isStarted() const noexcept;
 
-		void stop();
+		void stop(bool finishPendingTasks = false);
 
 	private:
 		void threadFunc() noexcept;
@@ -43,6 +43,7 @@ class CWorkerThreadPool
 		std::thread _thread;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
+		std::atomic<bool> _finishPendingTasks {false};
 	};
 
 public:
@@ -52,7 +53,7 @@ public:
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
 
-	void finishAllThreads(); // Does the same thing the destructor does, but can be called when needed
+	void finishAllThreads(bool completePendingTasks = false); // Does the same thing the destructor does, but can be called when needed
 
 	// Returns the current queue length
 	template <typename F>

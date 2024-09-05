@@ -23,8 +23,10 @@ bool CWorkerThreadPool::CWorkerThread::isStarted() const noexcept
 	return _working;
 }
 
-void CWorkerThreadPool::CWorkerThread::stop()
+void CWorkerThreadPool::CWorkerThread::stop(bool finishPendingTasks)
 {
+	// The order matters
+	_finishPendingTasks = finishPendingTasks;
 	_terminate = true;
 
 	// In case the thread was waiting. Since we can't wake only a specific thread, we have to wake all of them to terminate one.
@@ -53,6 +55,13 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 			if (_queue.pop(task, 5000))
 				task();
 		}
+
+		if (_finishPendingTasks)
+		{
+			TaskType task;
+			while (_queue.try_pop(task))
+				task();
+		}
 	}
 	catch (const std::exception& e)
 	{
@@ -79,8 +88,11 @@ CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName)
 	}
 }
 
-void CWorkerThreadPool::finishAllThreads()
+void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
 {
+	for (auto& th : _workerThreads)
+		th.stop(completePendingTasks);
+
 	_workerThreads.clear();
 }
 
