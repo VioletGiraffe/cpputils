@@ -6,6 +6,8 @@
 class SimpleThread
 {
 public:
+	inline SimpleThread() = default;
+
 	template <class... Args>
 	inline explicit SimpleThread(Args&&... args) noexcept :
 		_th{ std::forward<Args>(args)... }
@@ -13,6 +15,11 @@ public:
 
 	inline ~SimpleThread() noexcept {
 		stop(true);
+	}
+
+	template <class... Args>
+	inline void start(Args&&... args) noexcept {
+		_th = std::thread{ std::forward<Args>(args)... };
 	}
 
 	inline bool terminationRequested() noexcept {
@@ -23,6 +30,10 @@ public:
 		_terminate = true;
 		if (join && _th.joinable())
 			_th.join();
+	}
+
+	inline bool isRunning() const noexcept {
+		return _th.joinable();
 	}
 
 private:
