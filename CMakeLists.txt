@@ -1,43 +1,36 @@
 cmake_minimum_required(VERSION 3.10)
 project(cpputils LANGUAGES CXX)
 
-file(GLOB_RECURSE SOURCES "debugger/*.cpp")
-file(GLOB_RECURSE HEADERS "debugger/*.h")
-file(GLOB_RECURSE SOURCES "system/*.cpp")
-file(GLOB_RECURSE HEADERS "system/*.h")
-file(GLOB_RECURSE SOURCES "math/*.cpp")
-file(GLOB_RECURSE HEADERS "math/*.h")
-file(GLOB_RECURSE SOURCES "threading/*.cpp")
-file(GLOB_RECURSE HEADERS "threading/*.h")
-file(GLOB_RECURSE SOURCES "assert/*.cpp")
-file(GLOB_RECURSE HEADERS "assert/*.h")
-file(GLOB_RECURSE SOURCES "lang/*.cpp")
-file(GLOB_RECURSE HEADERS "lang/*.h")
-file(GLOB_RECURSE SOURCES "hash/*.cpp")
-file(GLOB_RECURSE HEADERS "hash/*.h")
-file(GLOB_RECURSE SOURCES "utility_functions/*.cpp")
-file(GLOB_RECURSE HEADERS "utility_functions/*.h")
+file(GLOB_RECURSE SOURCES
+    "debugger/*.cpp"
+    "system/*.cpp"
+    "math/*.cpp"
+    "threading/*.cpp"
+    "assert/*.cpp"
+    "lang/*.cpp"
+    "hash/*.cpp"
+    "utility_functions/*.cpp"
+)
+
+file(GLOB_RECURSE HEADERS
+    "debugger/*.h*"
+    "system/*.h*"
+    "math/*.h*"
+    "threading/*.h*"
+    "assert/*.h*"
+    "lang/*.h*"
+    "hash/*.h*"
+    "utility_functions/*.h*"
+)
 
 # Set the library as static
 add_library(cpputils STATIC ${SOURCES} ${HEADERS})
 
 # Add include directories
 target_include_directories(cpputils PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/
-    ${CMAKE_CURRENT_SOURCE_DIR}/../cpp-template-utils/
+    ${CMAKE_CURRENT_LIST_DIR}/
+    ${CMAKE_CURRENT_LIST_DIR}/../cpp-template-utils/
 )
-
-# Set output directories for release and debug
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../bin/release")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/../bin/debug")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../bin/release")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/../bin/debug")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/../bin/debug")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/../bin/debug")
-
-# Set object directories
-set(CMAKE_OBJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../build/")
-set(CMAKE_OBJECT_OUTPUT_DIR "${CMAKE_OBJECT_PATH}/$<CONFIG>/cpputils")
 
 # Platform-specific flags
 if(MSVC)
@@ -81,8 +74,3 @@ else()
         "$<$<CONFIG:Debug>:_DEBUG>"
     )
 endif()
-
-set_target_properties(cpputils PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}"
-    OBJECT_OUTPUTS_DIR "${CMAKE_OBJECT_OUTPUT_DIR}"
-)
