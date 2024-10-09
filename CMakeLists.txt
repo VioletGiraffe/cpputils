@@ -80,7 +80,7 @@ else()
 	target_link_options(cpputils PRIVATE -fuse-ld=gold)
 
 	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-		target_compile_options(-fconcepts)
+		target_compile_options(cpputils PRIVATE -fconcepts)
 	endif()
 
 	# Add defines based on configuration
