@@ -76,9 +76,12 @@ else()
 		-Wshadow -Wstrict-aliasing -Wstrict-aliasing=3 -Wuninitialized
 		-Wunused-const-variable=2 -Wwrite-strings -Wlogical-op
 		-Wno-missing-include-dirs -Wno-undef
-		-fconcepts
 	)
 	target_link_options(cpputils PRIVATE -fuse-ld=gold)
+
+	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+		target_compile_options(-fconcepts)
+	endif()
 
 	# Add defines based on configuration
 	target_compile_definitions(cpputils PRIVATE
