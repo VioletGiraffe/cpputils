@@ -3,7 +3,6 @@ project(cpputils LANGUAGES CXX)
 
 file(GLOB_RECURSE SOURCES
 	"debugger/*.cpp"
-	"system/*.cpp"
 	"math/*.cpp"
 	"threading/*.cpp"
 	"assert/*.cpp"
@@ -25,6 +24,19 @@ file(GLOB_RECURSE HEADERS
 
 # Set the library as static
 add_library(cpputils STATIC ${SOURCES} ${HEADERS})
+
+target_sources(cpputils PRIVATE
+		system/ctimeelapsed.cpp
+		system/processfilepath.cpp
+		system/consoleapplicationexithandler.cpp
+		system/timing.cpp
+	)
+
+if (WIN32)
+	target_sources(cpputils PRIVATE
+		system/win_utils.cpp
+	)
+endif()
 
 # Add include directories
 target_include_directories(cpputils PUBLIC
