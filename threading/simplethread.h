@@ -32,6 +32,10 @@ public:
 			_th.join();
 	}
 
+	inline void join() noexcept {
+		_th.join();
+	}
+
 	inline bool isRunning() const noexcept {
 		return _th.joinable();
 	}
