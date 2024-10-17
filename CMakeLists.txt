@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15) # Has to be 3.15+ because of this: https://cmake.org/cmake/help/latest/policy/CMP0057.html
 project(cpputils LANGUAGES CXX)
 
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+
 file(GLOB_RECURSE SOURCES
 	"debugger/*.cpp"
 	"math/*.cpp"
@@ -21,6 +23,9 @@ file(GLOB_RECURSE HEADERS
 	"hash/*.h*"
 	"utility_functions/*.h*"
 )
+
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "")
 
 # Set the library as static
 add_library(cpputils STATIC ${SOURCES} ${HEADERS})
@@ -48,15 +53,16 @@ target_include_directories(cpputils PUBLIC
 if(MSVC)
 	# Visual Studio specific flags
 	target_compile_options(cpputils PRIVATE
-		"$<$<CONFIG:Debug>:/JMC>"
+		$<$<CONFIG:Debug>:/JMC>
+		$<$<CONFIG:RelWithDebInfo>:/GS- /O2>
 		/MP /Zi 
 		/std:c++latest /permissive- /Zc:__cplusplus /Zc:char8_t
-		/W4 /FS
+		/W4 /FS /Gy
 	)
 	target_link_options(cpputils PRIVATE
-		"$<$<CONFIG:Release>:/OPT:REF /OPT:ICF>"
-		"$<$<CONFIG:Debug>:/INCREMENTAL>"
-		"/DEBUG:FASTLINK"
+		$<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF>
+		$<$<CONFIG:Debug>:/INCREMENTAL>
+		/DEBUG:FASTLINK
 	)
 	target_compile_definitions(cpputils PRIVATE
 		WIN32_LEAN_AND_MEAN
@@ -77,6 +83,7 @@ else()
 		-Wshadow -Wstrict-aliasing -Wstrict-aliasing=3 -Wuninitialized
 		-Wunused-const-variable=2 -Wwrite-strings -Wlogical-op
 		-Wno-missing-include-dirs -Wno-undef
+		$<$<CONFIG:RelWithDebInfo>:-O3>
 	)
 	target_link_options(cpputils PRIVATE -fuse-ld=gold)
 
