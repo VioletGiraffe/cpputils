@@ -68,7 +68,7 @@ if(MSVC)
 		WIN32_LEAN_AND_MEAN
 		NOMINMAX
 	)
-else()
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	# Unix-like specific flags
 	target_compile_options(cpputils PRIVATE
 		-std=c++2b
