@@ -5,6 +5,7 @@
 #include "utility/on_scope_exit.hpp"
 
 #include <Windows.h>
+#include <processthreadsapi.h>
 
 #include <array> // std::size
 
