@@ -53,7 +53,7 @@ target_include_directories(cpputils PUBLIC
 if(MSVC)
 	# Visual Studio specific flags
 	target_compile_options(cpputils PRIVATE
-		$<$<CONFIG:Debug>:/JMC>
+		$<$<CONFIG:Debug>:/Ob2>
 		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/GS- /O2>
 		/MP /Zi 
 		/std:c++latest /permissive- /Zc:__cplusplus /Zc:char8_t
