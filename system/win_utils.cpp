@@ -19,7 +19,11 @@ std::string ErrorStringFromErrorCode(const DWORD errCode) noexcept
 
 	assert_and_return_message_r(nCharsWritten > 0, "FormatMessageA failed with error code " + std::to_string(::GetLastError()), {});
 
-	return std::string(msgBuf, nCharsWritten);
+	std::string str(msgBuf, nCharsWritten);
+	if (str.ends_with("\r\n"))
+		str[str.size() - 2] = '\0'; // Remove trailing CRLF
+
+	return str;
 }
 
 std::string ErrorStringFromLastError() noexcept
