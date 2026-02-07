@@ -78,4 +78,4 @@ linux*|mac*|freebsd{
 	Debug:DEFINES += _DEBUG
 }
 
-g++*: QMAKE_CXXFLAGS += -fconcepts -fuse-ld=gold
+!mac*:g++*: QMAKE_CXXFLAGS += -fconcepts
