@@ -30,9 +30,9 @@ void CWorkerThreadPool::CWorkerThread::stop(bool finishPendingTasks)
 	_finishPendingTasks = finishPendingTasks;
 	_terminate = true;
 
-	// In case the thread was waiting. Since we can't wake only a specific thread, we have to wake all of them to terminate one.
-	// TODO: find a deterministic fix for the shutdown issue
-	std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	// In case the thread was already waiting on the queue. Since we can't wake only a specific thread, we have to wake all of
+	// them to terminate one. No lost-wakeup risk even if the thread hasn't reached the wait yet: threadFunc()'s wait checks
+	// _terminate itself as part of its predicate, so it returns immediately rather than depending on this notify arriving in time.
 	_queue.wakeAllThreads();
 
 	if (_thread.joinable())
@@ -66,8 +66,9 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 			}
 
 			// Wait for new work OUTSIDE the pool lock: a blocking wait while holding it would stall retire() for the whole timeout.
+			// Also wakes immediately on _terminate so stop() never has to wait out the timeout to shut the thread down.
 			if (!ran)
-				_queue.waitForItem(5000);
+				_queue.waitForItem(5000, [this] { return _terminate.load(); });
 		}
 
 		if (_finishPendingTasks)
