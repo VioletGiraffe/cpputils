@@ -45,6 +45,12 @@ public:
 	// Blocks until the queue is non-empty or the timeout elapses, WITHOUT popping anything. Thread-safe.
 	void waitForItem(uint32_t timeout_ms = uint32_max);
 
+	// Same, but also wakes up (without blocking at all, if already true) once extraWakeCondition() returns true.
+	// Lets a caller wait for "queue non-empty OR <some other flag>" without missing a wakeup that races ahead of the wait call,
+	// since the predicate is (re-)checked under the lock both before blocking and on every spurious/real wakeup.
+	template <typename Pred>
+	void waitForItem(uint32_t timeout_ms, Pred extraWakeCondition);
+
 	size_t size() const;
 	bool empty() const;
 
@@ -76,6 +82,16 @@ void CConsumerBlockingQueue<T>::waitForItem(const uint32_t timeout_ms)
 	std::unique_lock<std::mutex> lock(_mutex);
 	if (_queue.empty())
 		_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms));
+}
+
+template <typename T>
+template <typename Pred>
+void CConsumerBlockingQueue<T>::waitForItem(const uint32_t timeout_ms, Pred extraWakeCondition)
+{
+	std::unique_lock<std::mutex> lock(_mutex);
+	_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this, &extraWakeCondition] {
+		return !_queue.empty() || extraWakeCondition();
+	});
 }
 
 template <typename T>
