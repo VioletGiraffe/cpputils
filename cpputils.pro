@@ -6,15 +6,16 @@ CONFIG -= qt
 !win*:CONFIG -= flat
 
 CONFIG += strict_c++
-exists(../global.pri){
-	include(../global.pri)
-} else {
-	CONFIG += c++2b
-}
 
 mac* | linux*|freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
 	CONFIG(debug, debug|release):CONFIG *= Debug
+}
+
+exists(../global.pri){
+	include(../global.pri)
+} else {
+	CONFIG += c++2b
 }
 
 android {
