@@ -65,6 +65,10 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         g++ --version
+        sudo apt update -y; sudo apt install -qq gcc-14 g++-14 #required for C++2c
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 50
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 50
+        g++ --version
         pushd tests
         $QT_ROOT_DIR/bin/qmake -r -config release CONFIG+=release "DEFINES+=NDEBUG"
         make -j
