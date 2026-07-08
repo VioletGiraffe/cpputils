@@ -10,14 +10,8 @@ mac* | linux*|freebsd {
 	CONFIG(debug, debug|release):CONFIG *= Debug
 }
 
-contains(QT_ARCH, x86_64) {
-	ARCHITECTURE = x64
-} else {
-	ARCHITECTURE = x86
-}
-
-Release:OUTPUT_DIR=release/$${ARCHITECTURE}
-Debug:OUTPUT_DIR=debug/$${ARCHITECTURE}
+Release:OUTPUT_DIR=release
+Debug:OUTPUT_DIR=debug
 
 win*{
 	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus
@@ -45,7 +39,7 @@ INCLUDEPATH += \
 	$${PWD}/../../cpp-template-utils #same, but for CI
 
 LIBS += \
-	-L../../../bin/$${OUTPUT_DIR} \ #self
+	-L$${PWD}/../../../bin/$${OUTPUT_DIR} \ #self
 	-Lbin/$${OUTPUT_DIR} \ #same, but for CI
 	-lcpputils
 
