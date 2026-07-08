@@ -76,7 +76,7 @@ jobs:
 
     - name: Test run
       if: startsWith(matrix.os, 'macos')
-      run: ./tests/bin/test-app.app/Contents/MacOS/tests
+      run: ./tests/bin/test-app.app/Contents/MacOS/test-app
       
     - name: Test run
       if: startsWith(matrix.os, 'ubuntu')
