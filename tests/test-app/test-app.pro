@@ -1,4 +1,4 @@
-CONFIG += strict_c++ c++_latest
+CONFIG += strict_c++ c++latest
 CONFIG -= qt
 
 TEMPLATE = app
