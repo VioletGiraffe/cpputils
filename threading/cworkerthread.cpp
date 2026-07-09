@@ -30,9 +30,7 @@ void CWorkerThreadPool::CWorkerThread::stop(bool finishPendingTasks)
 	_finishPendingTasks = finishPendingTasks;
 	_terminate = true;
 
-	// In case the thread was already waiting on the queue. Since we can't wake only a specific thread, we have to wake all of
-	// them to terminate one. No lost-wakeup risk even if the thread hasn't reached the wait yet: threadFunc()'s wait checks
-	// _terminate itself as part of its predicate, so it returns immediately rather than depending on this notify arriving in time.
+	// In case the thread was already waiting on the queue
 	_queue.wakeAllThreads();
 
 	if (_thread.joinable())
@@ -113,7 +111,7 @@ void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
 
 void CWorkerThreadPool::retire(uint64_t tag)
 {
-	assert_r(tag != 0); // Tag 0 is the "untagged" sentinel and must never be retired (it would wipe unrelated tasks)
+	assert_debug_only(tag != 0); // Tag 0 is the "untagged" sentinel and must never be retired (it would wipe unrelated tasks)
 
 	// Exclusive lock: blocks until every in-flight task (all shared holders) finishes, after which no task is running.
 	// Then drop this tag's not-yet-started tasks from every per-thread queue. A task with this tag cannot be enqueued

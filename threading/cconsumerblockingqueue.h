@@ -65,6 +65,9 @@ private:
 template <typename T>
 void CConsumerBlockingQueue<T>::wakeAllThreads()
 {
+	// This lock is not useless, it searializes the setting of terminate flag by the caller with checking it in the wait() predicate.
+	// It eliminates the window for lost wakeup.
+	std::lock_guard locker{ _mutex }; // The lock doesn't even need to be held when calling notify(), could release before, but for simplicity it stays
 	_cond.notify_all();
 }
 
