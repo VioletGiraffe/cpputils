@@ -4,6 +4,7 @@
 #include "threading/cworkerthread.h"
 
 #include <array>
+#include <sstream>
 
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
@@ -82,14 +83,17 @@ static void bench(const size_t nThreads)
 	CWorkerThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
-	static constexpr size_t N = 100'000;
+	static constexpr size_t N = 100'00;
 
 	const auto countResult = [&workloadItems] {
 		return std::accumulate(workloadItems.begin(), workloadItems.end(), 0);
 	};
 
 	const auto waitForCompletion = [&pool, &countResult] {
-		while (pool.queueLength() > 0);
+		// Yield: queueLength() is now a single atomic load, and a full-speed spin on it would keep stealing the
+		// cache line every worker must update per pop (and hog a core the oversubscribed benches need)
+		while (pool.queueLength() > 0)
+			std::this_thread::yield();
 		for (int i = 0; i < 100; ++i)
 		{
 			if (auto n = countResult(); n != N)
@@ -120,7 +124,9 @@ static void bench(const size_t nThreads)
 			futures.push_back(pool.enqueueWithFuture([&workloadItems, i{ i * 4999 }] { ++workloadItems[i % nWorkloadItems]; }));
 		}
 
-		while (pool.queueLength() > 0);
+		// Not just the queueLength() spin: queueLength() == 0 does not cover popped-but-still-executing tasks,
+		// and a straggler's increment landing after the next iteration's std::fill would corrupt the count
+		waitForCompletion();
 		return pool.queueLength();
 	};
 
@@ -145,64 +151,56 @@ static void bench(const size_t nThreads)
 	};
 }
 
-TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
-{
-	bench(1);
-}
-
-TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
-{
-	const auto nThreads = std::max(2u, std::thread::hardware_concurrency() - 1);
-	::printf("Hardware concurrency: %d\n", nThreads);
-	bench(nThreads);
-}
-
-TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
-{
-	const auto nThreads = 4 * std::thread::hardware_concurrency();
-	::printf("Threads: %d\n", nThreads);
-	bench(nThreads);
-}
-
 static int64_t elapsedMs(std::chrono::steady_clock::time_point start)
 {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 }
 
-// The two [stealing] tests document required scheduling behavior the pool does not have yet: a task queued to a
-// busy lane must be picked up by an idle worker instead of waiting for the lane's owner. Expected to FAIL until
-// work stealing lands. [!mayfail] reports the failures without failing the run - remove it together with the
-// stealing implementation so they become enforcing.
-// The rdtsc-hash lane placement cannot be targeted from a test, so both tests are statistical; the task counts
-// are chosen to make the pass/fail outcome near-certain (collision probabilities in the comments).
+// The two [stealing] tests pin the work-stealing behavior: a task queued to a busy lane is picked up by an idle
+// worker instead of waiting for the lane's owner. The hashed lane placement cannot be targeted from a test, so
+// both tests are statistical; the task counts make the outcome near-certain (probabilities in the comments).
 
-TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing][!mayfail]")
+TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing]")
 {
-	// 8 tasks on 8 lanes collide (some lane gets two) in ~99.8% of rounds, serializing two 100 ms sleeps on one
-	// worker while at least one other worker idles: a round then takes >= 200 ms. With stealing, every round
-	// must take ~100 ms regardless of placement. Sleep-based, so core count does not matter.
+	// 8 tasks on 8 lanes collide (some lane gets two or more) in ~99.8% of rounds; each collided task must get
+	// a helper woken for it, so that every round takes ~100 ms regardless of placement. Sleep-based, so core
+	// count does not matter.
 	CWorkerThreadPool pool(8, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
+	// Diagnostics for failures: when and on which worker each task ran. One writer per slot, synchronized by
+	// the futures, so no atomics needed.
+	struct TaskTrace { int64_t startMs = -1; std::thread::id threadId; };
+
 	for (int round = 0; round < 3; ++round)
 	{
+		std::array<TaskTrace, 8> traces{};
 		std::vector<std::future<void>> futures;
 		const auto start = std::chrono::steady_clock::now();
 		for (int i = 0; i < 8; ++i)
-			futures.push_back(pool.enqueueWithFuture([] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }));
+		{
+			futures.push_back(pool.enqueueWithFuture([&traces, i, start] {
+				traces[i] = { elapsedMs(start), std::this_thread::get_id() };
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}));
+		}
 		for (auto& f : futures)
 			f.get();
 
 		const auto wallMs = elapsedMs(start);
+		std::ostringstream diag;
+		for (int i = 0; i < 8; ++i)
+			diag << "task " << i << ": started +" << traces[i].startMs << " ms on thread " << traces[i].threadId << '\n';
+		INFO(diag.str());
 		INFO("Round " << round << " took " << wallMs << " ms");
 		CHECK(wallMs < 175);
 	}
 }
 
-TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpool][stealing][!mayfail]")
+TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpool][stealing]")
 {
 	// A long task occupies its lane's owner; of the 32 trivial tasks, ~8 hash onto that lane (all 32 missing it:
-	// ~0.01%) and currently wait out the blocker while three workers idle. Required: idle workers take them over.
+	// ~0.01%); idle workers must take them over instead of letting them wait out the blocker.
 	std::atomic_bool blockerStarted{ false };
 	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
@@ -224,7 +222,7 @@ TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpo
 	CHECK(elapsedMs(start) < 250);
 }
 
-// The tests below pass today and pin behavior the stealing refactor must preserve.
+// The tests below pin behavior that work stealing must not break.
 
 TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
 {
@@ -303,4 +301,23 @@ TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
 
 	pool.finishAllThreads(true);
 	REQUIRE(counter == 200);
+}
+
+TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
+{
+	bench(1);
+}
+
+TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
+{
+	const auto nThreads = std::max(2u, std::thread::hardware_concurrency() - 1);
+	::printf("Hardware concurrency: %d\n", nThreads);
+	bench(nThreads);
+}
+
+TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
+{
+	const auto nThreads = 4 * std::thread::hardware_concurrency();
+	::printf("Threads: %d\n", nThreads);
+	bench(nThreads);
 }
