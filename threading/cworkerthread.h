@@ -11,13 +11,14 @@ DISABLE_COMPILER_WARNINGS
 RESTORE_COMPILER_WARNINGS
 
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <future>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
 #include <utility>
-#include <vector>
 
 using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
 
@@ -31,6 +32,8 @@ struct TaggedTask {
 // A pool of worker threads over per-thread task queues: enqueue() hash-picks a queue (no shared point of
 // contention between busy workers), and a worker that finds its own queue empty steals from the others,
 // so one busy queue cannot hold tasks hostage while other workers idle.
+// Idle workers all park on ONE shared condvar: since any of them can take any task, a producer wakes a
+// stealer with a single unrouted notify - no tracking of who sleeps where.
 class CWorkerThreadPool
 {
 	class CWorkerThread
@@ -90,17 +93,16 @@ public:
 		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
 		++_queuedCount;
 		const size_t queueLength = _queues[index].push(TaggedTask{ tag, std::forward<F>(task) });
-		// push() has woken this queue's owner; when the owner is parked AND this task is alone in the queue, that
-		// fresh wake is dedicated to exactly this task and no one else needs waking - the common case, making the
-		// push as cheap as pre-stealing. A collision (queueLength > 1) means the task sits behind a busy owner and
-		// must be STOLEN; the worker that will steal it is one whose own lane is empty, and with per-lane condvars
-		// that worker is reachable only by a wake aimed at ITS lane - a single targeted wake can miss it entirely -
-		// so wake ALL parked workers (rare under load: collisions need the producer to outrun a lane's owner).
-		// When only the owner is momentarily busy (queueLength == 1, owner not parked), one wake suffices.
-		if (queueLength > 1)
-			wakeAllParkedWorkers();
-		else if (!_parkedFlags[index].parked.load())
-			wakeOneParkedWorker(index + 1);
+		// Wake one idle worker, if any: an idle worker can take ANY task (own lane or stolen), so a single
+		// notify_one on the shared condvar always suffices and cannot be misrouted. The lock is not superfluous:
+		// it forbids the notify from landing in the gap between a waiter's predicate check and its blocking
+		// (_queuedCount is modified outside _idleMutex). No idle workers - no lock taken, so the hot path of a
+		// saturated pool stays contention-free.
+		if (_idleCount.load() > 0)
+		{
+			std::lock_guard lock(_idleMutex);
+			_idleCv.notify_one();
+		}
 		return queueLength;
 	}
 
@@ -125,28 +127,23 @@ public:
 	[[nodiscard]] size_t queueLength() const;
 
 private:
-	// Wakes at most one parked worker, scanning from scanStart (wraps around); a no-op if no one is parked.
-	void wakeOneParkedWorker(size_t scanStart);
-	// Wakes every currently-parked worker; used on a collision, when a task may be stuck behind a busy owner.
-	void wakeAllParkedWorkers();
-
-private:
 	const std::string _poolName;
 	const size_t _maxNumThreads;
 	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
 	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
-	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what parked
-	// workers' wait predicate checks, letting a worker parked on its own empty queue wake up and steal.
+	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
+	// workers' wait predicate checks, so queued work keeps a would-be sleeper awake to steal.
 	std::atomic<size_t> _queuedCount{ 0 };
-	// One flag per worker, set while it is parked in the idle wait; padded so different workers' frequent
-	// park/unpark stores do not false-share a cache line. enqueue() reads them to decide whom to wake: nobody
-	// when the pushed-to queue's owner is parked and the task is alone in that queue (the owner's fresh wake
-	// from push() is dedicated to it), one parked peer otherwise. The (default, seq_cst) ordering makes this
-	// lossless: a parking worker sets its flag BEFORE its wait predicate reads _queuedCount, and a producer
-	// increments _queuedCount BEFORE reading the flags - so either the worker sees the new task and stays
-	// awake, or the producer sees the parked flag and wakes it. Never neither.
-	struct alignas(64) ParkedFlag { std::atomic<bool> parked{ false }; };
-	std::vector<ParkedFlag> _parkedFlags;
+	// The number of workers currently inside the idle wait; each transition is written solely by the waiting
+	// worker itself, so nothing can consume a worker's idle state and leave it desynced. Gates the producer-side
+	// notify. The (default, seq_cst) ordering makes the gate lossless: a parking worker increments this BEFORE
+	// its wait predicate reads _queuedCount, and a producer increments _queuedCount BEFORE reading this - so
+	// either the worker sees the new task and declines to block, or the producer sees the idler and notifies.
+	// Never neither. A stale nonzero read (the worker just left the wait) costs one notify into an empty condvar
+	// at worst: an awake worker always completes a full tryGetTask before re-parking, so no task is overlooked.
+	std::atomic<size_t> _idleCount{ 0 };
+	std::mutex _idleMutex;
+	std::condition_variable _idleCv;
 	// Worker pop+execute takes it shared; retire() takes it exclusive (see the .cpp for why).
 	std::shared_mutex _poolMutex;
 	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues;

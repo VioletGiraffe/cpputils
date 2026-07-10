@@ -83,7 +83,7 @@ static void bench(const size_t nThreads)
 	CWorkerThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
-	static constexpr size_t N = 100'00;
+	static constexpr size_t N = 100'000;
 
 	const auto countResult = [&workloadItems] {
 		return std::accumulate(workloadItems.begin(), workloadItems.end(), 0);
