@@ -222,6 +222,77 @@ TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpo
 	CHECK(elapsedMs(start) < 250);
 }
 
+TEST_CASE("Park/wake churn does not lose wakeups", "[threadpool]")
+{
+	// Each round drains the pool to idle and then a single task must arrive through the idle-wake gate.
+	// 1000 rounds sample both worker states: parked in the condvar wait, and mid-transition around it.
+	// One lost wake stalls its round for the full 5000 ms idle timeout - unmissable against this budget.
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	const auto start = std::chrono::steady_clock::now();
+	for (int i = 0; i < 1000; ++i)
+		pool.enqueueWithFuture([] {}).get();
+
+	CHECK(elapsedMs(start) < 2000);
+}
+
+TEST_CASE("Concurrent enqueue from multiple producer threads", "[threadpool]")
+{
+	// enqueue() must be callable from any thread: the lane mutexes, _queuedCount and the idle-wake gate are
+	// the shared state under test. The final count proves no task was lost or duplicated.
+	std::atomic_int counter{ 0 };
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr int nProducers = 8;
+	static constexpr int tasksPerProducer = 10'000;
+
+	std::vector<std::thread> producers;
+	for (int p = 0; p < nProducers; ++p)
+	{
+		producers.emplace_back([&pool, &counter] {
+			for (int i = 0; i < tasksPerProducer; ++i)
+				pool.enqueue([&counter] { ++counter; });
+		});
+	}
+	for (auto& t : producers)
+		t.join();
+
+	pool.finishAllThreads(true);
+	REQUIRE(counter == nProducers * tasksPerProducer);
+}
+
+// Executes one node of a binary task tree: counts itself, spawns two children down to depth 0
+static void runFanOutTask(CWorkerThreadPool& pool, std::atomic_int& counter, int depth)
+{
+	++counter;
+	if (depth > 0)
+	{
+		pool.enqueue([&pool, &counter, depth] { runFanOutTask(pool, counter, depth - 1); });
+		pool.enqueue([&pool, &counter, depth] { runFanOutTask(pool, counter, depth - 1); });
+	}
+}
+
+TEST_CASE("Tasks enqueueing further tasks", "[threadpool]")
+{
+	// A worker is also a valid producer: mid-task enqueues must wake idle peers and must not deadlock
+	// (enqueue takes no pool-wide lock, so enqueueing while the calling worker holds the shared pop+execute
+	// lock is safe - this pins that property).
+	std::atomic_int counter{ 0 };
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr int depth = 12;
+	static constexpr int expected = (1 << (depth + 1)) - 1; // node count of the full binary tree
+	pool.enqueue([&pool, &counter] { runFanOutTask(pool, counter, depth); });
+
+	const auto start = std::chrono::steady_clock::now();
+	while (counter < expected && elapsedMs(start) < 5000)
+		std::this_thread::yield();
+	REQUIRE(counter == expected);
+}
+
 // The tests below pin behavior that work stealing must not break.
 
 TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
@@ -235,6 +306,32 @@ TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
 	const auto start = std::chrono::steady_clock::now();
 	pool.finishAllThreads();
 	CHECK(elapsedMs(start) < 1000);
+}
+
+TEST_CASE("Destruction with a busy worker and a queued backlog", "[threadpool]")
+{
+	// One thread makes the outcome deterministic (with more, a not-yet-stopped peer may legitimately run part
+	// of the backlog while an earlier worker is being joined). The destructor's stop() flags terminate while
+	// the worker is mid-task; once the blocker finishes, the worker must exit its loop abandoning the backlog
+	// (the default is finishPendingTasks == false) - promptly, not via the idle timeout.
+	std::atomic_bool blockerStarted{ false };
+	std::atomic_int backlogRun{ 0 };
+	std::chrono::steady_clock::time_point destructionStart;
+	{
+		CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		pool.enqueue([&blockerStarted] {
+			blockerStarted = true;
+			std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		});
+		while (!blockerStarted)
+			std::this_thread::yield();
+
+		for (int i = 0; i < 50; ++i)
+			pool.enqueue([&backlogRun] { ++backlogRun; });
+		destructionStart = std::chrono::steady_clock::now();
+	}
+	CHECK(elapsedMs(destructionStart) < 2000); // ~300 ms of blocker remainder, never the 5000 ms idle timeout
+	REQUIRE(backlogRun == 0);
 }
 
 TEST_CASE("retire()", "[threadpool]")
@@ -290,6 +387,37 @@ TEST_CASE("retire()", "[threadpool]")
 		pool.retire(tag);
 		REQUIRE(taskFinished == true);
 	}
+}
+
+TEST_CASE("retire() on a busy multi-thread pool", "[threadpool]")
+{
+	// The single-thread retire() tests pin the contract deterministically; here retire()'s exclusive lock must
+	// wedge itself between 4 workers continuously holding the shared pop+execute lock. The contract half under
+	// test: no tagged task may run after retire() returns - each tagged task checks the flag that is set right
+	// at that point. (Tagged tasks running shortly BEFORE the return are allowed, see the single-thread test.)
+	std::atomic_bool retired{ false };
+	std::atomic_int taggedRunAfterRetire{ 0 };
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr uint64_t tag = 13;
+	std::vector<std::future<void>> untaggedFutures;
+	for (int i = 0; i < 200; ++i)
+	{
+		pool.enqueue([&retired, &taggedRunAfterRetire] {
+			if (retired)
+				++taggedRunAfterRetire;
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}, tag);
+		untaggedFutures.push_back(pool.enqueueWithFuture([] { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }));
+	}
+
+	pool.retire(tag); // Lands while the backlog is deep and all 4 workers are mid-task
+	retired = true;
+
+	for (auto& f : untaggedFutures)
+		f.get();
+	REQUIRE(taggedRunAfterRetire == 0);
 }
 
 TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")

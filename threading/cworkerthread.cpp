@@ -62,7 +62,23 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 				TaggedTask item;
 				if (tryGetTask(item))
 				{
-					item.task();
+					// The task's exception is contained right here: a throw must not unwind threadFunc, which would
+					// silently and permanently shrink the pool by one worker. Inlined rather than a helper function:
+					// MSVC never inlines a function containing try, and the extra call is measurable on nanotasks.
+					// A future-wrapped task that throws leaves its promise unfulfilled, so the waiter gets
+					// std::future_error (broken_promise) rather than the task's exception.
+					try
+					{
+						item.task();
+					}
+					catch (const std::exception& e)
+					{
+						assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+					}
+					catch (...)
+					{
+						assert_unconditional_r("Unknown exception in a worker task");
+					}
 					ran = true;
 				}
 			}
@@ -88,7 +104,18 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 			while (_pool._queues[_queueIndex].try_pop(item))
 			{
 				--_pool._queuedCount;
-				item.task();
+				try // Same task-exception containment as in the main loop above
+				{
+					item.task();
+				}
+				catch (const std::exception& e)
+				{
+					assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+				}
+				catch (...)
+				{
+					assert_unconditional_r("Unknown exception in a worker task");
+				}
 			}
 		}
 	}

@@ -59,10 +59,12 @@ class CWorkerThreadPool
 		CWorkerThreadPool& _pool;
 		const size_t _queueIndex; // this worker's own queue in _pool._queues
 		const std::string _threadName;
-		std::thread _thread;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
 		std::atomic<bool> _finishPendingTasks {false};
+		// Must be the last member: its initialization starts the thread, which reads the members above -
+		// they have to be initialized by then
+		std::thread _thread;
 	};
 
 public:
