@@ -375,6 +375,56 @@ TEST_CASE("Nested parallelFor from inside pool tasks does not deadlock", "[threa
 	REQUIRE(total == 8000);
 }
 
+TEST_CASE("parallelForAsync executes every index exactly once, then completes", "[threadpool][parallelforasync]")
+{
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	for (const size_t count : { size_t{ 0 }, size_t{ 1 }, size_t{ 3 }, size_t{ 4 }, size_t{ 100 }, size_t{ 10'000 } })
+	{
+		std::vector<std::atomic_int> hits(count);
+		std::promise<void> donePromise;
+		pool.parallelForAsync(count, [&hits](size_t i) { ++hits[i]; }, [&donePromise] { donePromise.set_value(); });
+		donePromise.get_future().get(); // count == 0 must complete too - hangs here if it does not
+
+		size_t wrongCount = 0;
+		for (const auto& h : hits)
+			wrongCount += h != 1 ? 1 : 0;
+		INFO("count = " << count);
+		REQUIRE(wrongCount == 0);
+	}
+}
+
+TEST_CASE("parallelForAsync does not block the caller; onAllCompleted runs last, on a worker", "[threadpool][parallelforasync]")
+{
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	std::atomic_bool callerReturned{ false };
+	std::atomic_int executed{ 0 };
+	int executedAtCompletion = -1;
+	std::thread::id completionThreadId;
+	std::promise<void> donePromise;
+
+	pool.parallelForAsync(64,
+		[&callerReturned, &executed](size_t) {
+			// Gates every index on the caller having already returned: a blocking dispatch could never finish
+			while (!callerReturned)
+				std::this_thread::yield();
+			++executed;
+		},
+		[&executed, &executedAtCompletion, &completionThreadId, &donePromise] {
+			executedAtCompletion = executed;
+			completionThreadId = std::this_thread::get_id();
+			donePromise.set_value();
+		});
+	callerReturned = true;
+
+	donePromise.get_future().get();
+	REQUIRE(executedAtCompletion == 64);
+	CHECK(completionThreadId != std::this_thread::get_id());
+}
+
 // The tests below pin behavior that work stealing must not break.
 
 TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")

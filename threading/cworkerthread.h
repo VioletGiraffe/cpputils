@@ -87,11 +87,6 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task, uint64_t tag = 0)
 	{
-		// Fibonacci hashing of the timestamp: the multiply avalanches the low-bit deltas between consecutive
-		// rdtsc reads into the high bits that Math::reduce() keys on. The raw timestamp's high bits change only
-		// a few times per second, which used to land every push of a burst on the SAME lane. The mixed value is
-		// better than random for bursts: multiplicative hashing spreads near-constant-delta inputs quasi-evenly
-		// over the lanes (equidistribution), approximating a round robin with no shared state.
 		const uint64_t mixed = rdtsc_fast_thread_local() * 0x9E3779B97F4A7C15ull;
 		const size_t index = Math::reduce(static_cast<uint32_t>(mixed >> 32), (uint32_t)_maxNumThreads);
 		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
@@ -124,66 +119,20 @@ public:
 	}
 
 	// Runs fn(0) .. fn(count - 1) across the workers and the calling thread, returning once every call has
-	// completed. Indices are handed out one at a time from a shared dispenser, so uneven per-index costs
-	// load-balance naturally. The calling thread participates on equal footing and can complete the entire
-	// range alone; a helper task popped after the indices have run out simply returns. That makes the call
-	// safe (deadlock-free) even from inside a pool task on a saturated pool. The caller does not process
-	// unrelated pool tasks while waiting for the last in-flight fn to return.
+	// completed. The calling thread participates on equal footing and can complete the entire range alone,
+	// which makes the call safe (deadlock-free) even from inside a pool task on a saturated pool. The caller
+	// does not process unrelated pool tasks while waiting for the last in-flight fn to return.
 	// fn is invoked concurrently and must not throw: the workers' exception containment would swallow the
 	// throw and the completion count would never be reached, leaving the caller waiting forever.
 	template <typename Fn>
-	void parallelFor(const size_t count, Fn&& fn)
-	{
-		if (count == 0)
-			return;
-		if (count == 1)
-		{
-			fn(size_t{ 0 });
-			return;
-		}
+	void parallelFor(size_t count, Fn&& fn);
 
-		struct BatchState
-		{
-			BatchState(const size_t n, Fn&& f) : count(n), fn(std::forward<Fn>(f)) {}
-
-			// Executes indices from the shared dispenser until they run out; the last completed index wakes the caller.
-			void drainIndices()
-			{
-				for (;;)
-				{
-					const size_t index = nextIndex.fetch_add(1);
-					if (index >= count)
-						return;
-					fn(index);
-					if (completedCount.fetch_add(1) + 1 == count)
-					{
-						// The lock is required: it forbids the notify from landing in the gap between the
-						// caller's predicate check and its blocking (completedCount is modified outside the mutex)
-						std::lock_guard lock(mutex);
-						allDone.notify_one();
-					}
-				}
-			}
-
-			std::atomic<size_t> nextIndex{ 0 };
-			std::atomic<size_t> completedCount{ 0 };
-			std::mutex mutex;
-			std::condition_variable allDone;
-			const size_t count;
-			std::decay_t<Fn> fn;
-		};
-
-		// Shared ownership rather than the caller's stack: a helper popped after the batch has already
-		// completed still touches the dispenser (finds it exhausted and returns) - the caller may be long gone
-		// by then. Late helpers never invoke fn, so whatever fn references only has to outlive the call itself.
-		auto state = std::make_shared<BatchState>(count, std::forward<Fn>(fn));
-		const size_t helperCount = std::min(count - 1, _maxNumThreads);
-		for (size_t i = 0; i < helperCount; ++i)
-			enqueue([state] { state->drainIndices(); });
-		state->drainIndices();
-		std::unique_lock lock(state->mutex);
-		state->allDone.wait(lock, [&state] { return state->completedCount.load() == state->count; });
-	}
+	// The non-blocking parallelFor: returns as soon as the batch is dispatched; onAllCompleted then runs
+	// exactly once, on the worker that completes the last index - never on the calling thread (count == 0
+	// also dispatches to a worker). If the pool is destroyed before any worker picks the batch up, neither
+	// fn nor onAllCompleted runs. Like fn, onAllCompleted must not throw.
+	template <typename Fn, typename OnAllCompleted>
+	void parallelForAsync(size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted);
 
 	// Blocks until all the worker threads are started
 	void waitUntilStarted() noexcept;
@@ -217,3 +166,99 @@ private:
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 };
+
+namespace detail {
+
+// The shared work-dispensing state of one parallelFor / parallelForAsync batch: indices are handed out one
+// at a time from the shared dispenser, so uneven per-index costs load-balance naturally. Owned via shared_ptr
+// by each helper task rather than the initiator's stack: a helper popped after the batch has already completed
+// still touches the dispenser (finds it exhausted and returns) - the initiator may be long gone by then. Late
+// helpers never invoke fn, so whatever fn references only has to stay alive until onAllCompleted has run.
+template <typename Fn, typename OnAllCompleted>
+struct ParallelBatchState
+{
+	ParallelBatchState(const size_t n, Fn&& f, OnAllCompleted&& onDone) :
+		count(n), fn(std::forward<Fn>(f)), onAllCompleted(std::forward<OnAllCompleted>(onDone))
+	{}
+
+	// Executes indices from the shared dispenser until they run out; the last completed index runs onAllCompleted.
+	void drainIndices()
+	{
+		for (;;)
+		{
+			const size_t index = nextIndex.fetch_add(1);
+			if (index >= count)
+				return;
+			fn(index);
+			if (completedCount.fetch_add(1) + 1 == count)
+				onAllCompleted();
+		}
+	}
+
+	std::atomic<size_t> nextIndex{ 0 };
+	std::atomic<size_t> completedCount{ 0 };
+	const size_t count;
+	std::decay_t<Fn> fn;
+	std::decay_t<OnAllCompleted> onAllCompleted;
+};
+
+template <typename Fn, typename OnAllCompleted>
+[[nodiscard]] auto makeParallelBatchState(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
+{
+	return std::make_shared<ParallelBatchState<Fn, OnAllCompleted>>(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
+}
+
+} // namespace detail
+
+template <typename Fn>
+void CWorkerThreadPool::parallelFor(const size_t count, Fn&& fn)
+{
+	if (count == 0)
+		return;
+	if (count == 1)
+	{
+		fn(size_t{ 0 });
+		return;
+	}
+
+	// The wait block is co-owned by the completion action rather than living on the caller's stack: the caller
+	// can wake on the predicate check alone (e.g. spuriously) right after 'done' is set and return, destroying
+	// a stack-owned mutex+condvar under the last worker's in-progress notify. Flipping 'done' under the mutex
+	// also keeps the notify from landing in the gap between the caller's predicate check and its blocking.
+	struct WaitSync
+	{
+		std::mutex mutex;
+		std::condition_variable allDone;
+		bool done = false;
+	};
+	auto sync = std::make_shared<WaitSync>();
+	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), [sync] {
+		std::lock_guard lock(sync->mutex);
+		sync->done = true;
+		sync->allDone.notify_one();
+	});
+
+	const size_t helperCount = std::min(count - 1, _maxNumThreads);
+	for (size_t i = 0; i < helperCount; ++i)
+		enqueue([state] { state->drainIndices(); });
+	state->drainIndices();
+
+	std::unique_lock lock(sync->mutex);
+	sync->allDone.wait(lock, [&sync] { return sync->done; });
+}
+
+template <typename Fn, typename OnAllCompleted>
+void CWorkerThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
+{
+	if (count == 0)
+	{
+		// No indices to dispense, but the contract stands: onAllCompleted still runs (once, on a worker)
+		enqueue([onAllCompleted{ std::forward<OnAllCompleted>(onAllCompleted) }] () mutable { onAllCompleted(); });
+		return;
+	}
+
+	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
+	const size_t helperCount = std::min(count, _maxNumThreads);
+	for (size_t i = 0; i < helperCount; ++i)
+		enqueue([state] { state->drainIndices(); });
+}
