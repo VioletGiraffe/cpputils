@@ -187,13 +187,19 @@ TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing]
 		for (auto& f : futures)
 			f.get();
 
-		const auto wallMs = elapsedMs(start);
+		int64_t latestStartMs = 0;
 		std::ostringstream diag;
 		for (int i = 0; i < 8; ++i)
+		{
+			latestStartMs = std::max(latestStartMs, traces[i].startMs);
 			diag << "task " << i << ": started +" << traces[i].startMs << " ms on thread " << traces[i].threadId << '\n';
+		}
 		INFO(diag.str());
-		INFO("Round " << round << " took " << wallMs << " ms");
-		CHECK(wallMs < 175);
+		INFO("Round " << round << " took " << elapsedMs(start) << " ms");
+		// Assert on start times, not wall time: a missed steal shows as a straggler starting at +100 ms or later
+		// (once the first worker frees up), while wall time also includes sleep_for overshoot, which is pure noise
+		// on a loaded CI runner (observed on a shared macOS runner: the 100 ms of sleeping took 175 ms).
+		CHECK(latestStartMs < 75);
 	}
 }
 
@@ -234,7 +240,8 @@ TEST_CASE("Park/wake churn does not lose wakeups", "[threadpool]")
 	for (int i = 0; i < 1000; ++i)
 		pool.enqueueWithFuture([] {}).get();
 
-	CHECK(elapsedMs(start) < 2000);
+	// Generous for loaded CI runners (1000 sequential wake round-trips), yet a single lost wake costs +5000 ms
+	CHECK(elapsedMs(start) < 4000);
 }
 
 TEST_CASE("Concurrent enqueue from multiple producer threads", "[threadpool]")
