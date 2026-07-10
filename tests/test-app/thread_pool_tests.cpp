@@ -300,6 +300,81 @@ TEST_CASE("Tasks enqueueing further tasks", "[threadpool]")
 	REQUIRE(counter == expected);
 }
 
+TEST_CASE("parallelFor executes every index exactly once", "[threadpool][parallelfor]")
+{
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	for (const size_t count : { size_t{ 0 }, size_t{ 1 }, size_t{ 3 }, size_t{ 4 }, size_t{ 100 }, size_t{ 10'000 } })
+	{
+		std::vector<std::atomic_int> hits(count);
+		pool.parallelFor(count, [&hits](size_t i) { ++hits[i]; });
+		size_t wrongCount = 0;
+		for (const auto& h : hits)
+			wrongCount += h != 1 ? 1 : 0;
+		INFO("count = " << count);
+		REQUIRE(wrongCount == 0);
+	}
+}
+
+TEST_CASE("parallelFor runs indices concurrently", "[threadpool][parallelfor]")
+{
+	// 8 sleeps over 7 workers + the calling thread: concurrent execution takes ~100 ms; any serialization
+	// shows up as a multiple of that. Sleep-based, so core count does not matter.
+	CWorkerThreadPool pool(7, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	const auto start = std::chrono::steady_clock::now();
+	pool.parallelFor(8, [](size_t) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+	CHECK(elapsedMs(start) < 400); // fully sequential would be 800 ms; generous margin for loaded CI runners
+}
+
+TEST_CASE("parallelFor with every worker busy completes via the calling thread", "[threadpool][parallelfor]")
+{
+	// Both workers are held by 500 ms blockers, so nothing but the calling thread can run the indices: it must
+	// drain the whole range alone, well before any worker frees up. This pins the caller-participation property
+	// that makes parallelFor deadlock-free on a saturated pool.
+	std::atomic_int blockersStarted{ 0 };
+	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	for (int i = 0; i < 2; ++i)
+	{
+		pool.enqueue([&blockersStarted] {
+			++blockersStarted;
+			std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		});
+	}
+	while (blockersStarted < 2)
+		std::this_thread::yield();
+
+	const auto start = std::chrono::steady_clock::now();
+	std::atomic_int counter{ 0 };
+	pool.parallelFor(64, [&counter](size_t) { ++counter; });
+	REQUIRE(counter == 64);
+	CHECK(elapsedMs(start) < 250);
+}
+
+TEST_CASE("Nested parallelFor from inside pool tasks does not deadlock", "[threadpool][parallelfor]")
+{
+	// More outer tasks than workers, and every outer task blocks inside a parallelFor of its own - no worker is
+	// ever free to help another's batch, so each nested call must complete through its calling (worker) thread.
+	std::atomic_int total{ 0 };
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	std::vector<std::future<void>> futures;
+	for (int i = 0; i < 8; ++i)
+	{
+		futures.push_back(pool.enqueueWithFuture([&pool, &total] {
+			pool.parallelFor(1000, [&total](size_t) { ++total; });
+		}));
+	}
+	for (auto& f : futures)
+		f.get();
+	REQUIRE(total == 8000);
+}
+
 // The tests below pin behavior that work stealing must not break.
 
 TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")

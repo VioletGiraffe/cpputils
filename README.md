@@ -104,7 +104,7 @@ A general purpose (template item type) thread-safe queue with the main purpose o
 
 ### CWorkerThread / CWorkerThreadPool
 
-The `CWorkerThread` class is a worker thread that receives its work load from a `CConsumerBlockingQueue`. The `CWorkerThread` is not available directly, but only as a `CWorkerThreadPool` class of one or more threads. The thread pool spawns threads on demand rather than unconditionally - up to `maxNumThreads`.
+The `CWorkerThread` class is a worker thread that receives its work load from a `CConsumerBlockingQueue`. The `CWorkerThread` is not available directly, but only as a `CWorkerThreadPool` class of one or more threads over per-thread task queues with work stealing - optimal for any kinds of tasks, small and large. Besides fire-and-forget `enqueue()` (optionally tagged, so an owner can `retire()` its pending tasks) and `enqueueWithFuture()`, `parallelFor(count, fn)` runs an index range across the workers plus the calling thread and returns when every index has completed; the caller participates in the work, which makes nested `parallelFor` calls from inside pool tasks deadlock-free.
 
 ### CPeriodicExecutionThread
 

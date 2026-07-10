@@ -10,14 +10,17 @@ DISABLE_COMPILER_WARNINGS
 #include "3rdparty/function2/function2.hpp"
 RESTORE_COMPILER_WARNINGS
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
@@ -118,6 +121,68 @@ public:
 			p.set_value();
 		}, tag);
 		return future;
+	}
+
+	// Runs fn(0) .. fn(count - 1) across the workers and the calling thread, returning once every call has
+	// completed. Indices are handed out one at a time from a shared dispenser, so uneven per-index costs
+	// load-balance naturally. The calling thread participates on equal footing and can complete the entire
+	// range alone; a helper task popped after the indices have run out simply returns. That makes the call
+	// safe (deadlock-free) even from inside a pool task on a saturated pool. The caller does not process
+	// unrelated pool tasks while waiting for the last in-flight fn to return.
+	// fn is invoked concurrently and must not throw: the workers' exception containment would swallow the
+	// throw and the completion count would never be reached, leaving the caller waiting forever.
+	template <typename Fn>
+	void parallelFor(const size_t count, Fn&& fn)
+	{
+		if (count == 0)
+			return;
+		if (count == 1)
+		{
+			fn(size_t{ 0 });
+			return;
+		}
+
+		struct BatchState
+		{
+			BatchState(const size_t n, Fn&& f) : count(n), fn(std::forward<Fn>(f)) {}
+
+			// Executes indices from the shared dispenser until they run out; the last completed index wakes the caller.
+			void drainIndices()
+			{
+				for (;;)
+				{
+					const size_t index = nextIndex.fetch_add(1);
+					if (index >= count)
+						return;
+					fn(index);
+					if (completedCount.fetch_add(1) + 1 == count)
+					{
+						// The lock is required: it forbids the notify from landing in the gap between the
+						// caller's predicate check and its blocking (completedCount is modified outside the mutex)
+						std::lock_guard lock(mutex);
+						allDone.notify_one();
+					}
+				}
+			}
+
+			std::atomic<size_t> nextIndex{ 0 };
+			std::atomic<size_t> completedCount{ 0 };
+			std::mutex mutex;
+			std::condition_variable allDone;
+			const size_t count;
+			std::decay_t<Fn> fn;
+		};
+
+		// Shared ownership rather than the caller's stack: a helper popped after the batch has already
+		// completed still touches the dispenser (finds it exhausted and returns) - the caller may be long gone
+		// by then. Late helpers never invoke fn, so whatever fn references only has to outlive the call itself.
+		auto state = std::make_shared<BatchState>(count, std::forward<Fn>(fn));
+		const size_t helperCount = std::min(count - 1, _maxNumThreads);
+		for (size_t i = 0; i < helperCount; ++i)
+			enqueue([state] { state->drainIndices(); });
+		state->drainIndices();
+		std::unique_lock lock(state->mutex);
+		state->allDone.wait(lock, [&state] { return state->completedCount.load() == state->count; });
 	}
 
 	// Blocks until all the worker threads are started
