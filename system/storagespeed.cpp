@@ -113,9 +113,88 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey dev)
 	return StorageSpeed::SlowOrUnknown;
 }
 
+#elif defined __APPLE__
+
+#include <IOKit/IOKitLib.h>
+#include <IOKit/storage/IOStorageDeviceCharacteristics.h>
+#include <IOKit/storage/IOStorageProtocolCharacteristics.h>
+#include <sys/param.h>
+#include <sys/mount.h>
+
+#include <string>
+
+using VolumeKey = std::string; // The mount's BSD device name from statfs, e.g. "/dev/disk3s1"
+
+static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
+{
+	struct statfs fsInfo;
+	if (::statfs(path.c_str(), &fsInfo) != 0)
+		return false;
+
+	key = fsInfo.f_mntfromname;
+	return true;
+}
+
+// Reads a string property from one of the characteristics dictionaries ("Device Characteristics" / "Protocol
+// Characteristics"), searching upward from the media object: an APFS volume is a synthesized device, the physical
+// device's properties live further up the registry chain. Returns an empty string when not found.
+static std::string registryCharacteristic(const io_service_t media, CFStringRef characteristicsDictKey, CFStringRef propertyKey)
+{
+	const CFTypeRef dictRef = IORegistryEntrySearchCFProperty(media, kIOServicePlane, characteristicsDictKey,
+		kCFAllocatorDefault, kIORegistryIterateRecursively | kIORegistryIterateParents);
+	if (!dictRef)
+		return {};
+
+	std::string result;
+	if (CFGetTypeID(dictRef) == CFDictionaryGetTypeID())
+	{
+		const CFTypeRef value = CFDictionaryGetValue(static_cast<CFDictionaryRef>(dictRef), propertyKey);
+		if (value && CFGetTypeID(value) == CFStringGetTypeID())
+		{
+			char buffer[64]; // The characteristics values are short fixed strings ("Solid State", "USB", "PCI-Express", ...)
+			if (CFStringGetCString(static_cast<CFStringRef>(value), buffer, sizeof(buffer), kCFStringEncodingUTF8))
+				result = buffer;
+		}
+	}
+
+	CFRelease(dictRef);
+	return result;
+}
+
+static StorageSpeed queryVolumeSpeed(const VolumeKey& deviceName)
+{
+	// Mounts not backed by a local block device (network, virtual) have no "/dev/..." origin
+	if (!deviceName.starts_with("/dev/"))
+		return StorageSpeed::SlowOrUnknown;
+
+#if defined __MAC_OS_X_VERSION_MAX_ALLOWED && __MAC_OS_X_VERSION_MAX_ALLOWED >= 120000
+	const mach_port_t iokitPort = kIOMainPortDefault;
+#else
+	const mach_port_t iokitPort = kIOMasterPortDefault; // pre-macOS-12 SDK name of the same (null) port constant
+#endif
+	// IOServiceGetMatchingService consumes the matching dictionary - no release needed
+	const io_service_t media = IOServiceGetMatchingService(iokitPort, IOBSDNameMatching(iokitPort, 0, deviceName.c_str() + 5 /* skip "/dev/" */));
+	if (media == IO_OBJECT_NULL)
+		return StorageSpeed::SlowOrUnknown;
+
+	// Medium type first: the common case (internal HDD/SSD) is decided by it alone
+	StorageSpeed result = StorageSpeed::SlowOrUnknown;
+	if (registryCharacteristic(media, CFSTR(kIOPropertyDeviceCharacteristicsKey), CFSTR(kIOPropertyMediumTypeKey)) == kIOPropertyMediumTypeSolidStateKey)
+	{
+		// A "Solid State" claim is vetoed for USB (bridges' reporting is unreliable, and external disks want bounded IO
+		// regardless of medium - same policy as the other platforms) and for an undetermined interconnect (empty string)
+		const std::string interconnect = registryCharacteristic(media, CFSTR(kIOPropertyProtocolCharacteristicsKey), CFSTR(kIOPropertyPhysicalInterconnectTypeKey));
+		if (!interconnect.empty() && interconnect != kIOPropertyPhysicalInterconnectTypeUSB)
+			result = StorageSpeed::FastRandomAccess;
+	}
+
+	IOObjectRelease(media);
+	return result;
+}
+
 #endif
 
-#if defined _WIN32 || defined __linux__
+#if defined _WIN32 || defined __linux__ || defined __APPLE__
 
 #include <algorithm>
 #include <mutex>
@@ -141,7 +220,7 @@ StorageSpeed storageSpeedForPath(const std::filesystem::path& path)
 	return speed;
 }
 
-#else // Not implemented for this platform (macOS etc.)
+#else // Not implemented for this platform
 
 StorageSpeed storageSpeedForPath(const std::filesystem::path& /*path*/)
 {

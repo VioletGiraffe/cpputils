@@ -58,6 +58,11 @@ if (WIN32)
 	)
 endif()
 
+if (APPLE)
+	# storagespeed.cpp; PUBLIC because the static lib defers the actual linking to the consumer
+	target_link_libraries(${TARGET_NAME} PUBLIC "-framework IOKit" "-framework CoreFoundation")
+endif()
+
 # Add include directories
 target_include_directories(${TARGET_NAME} PUBLIC
 	${CMAKE_CURRENT_LIST_DIR}/
