@@ -23,6 +23,9 @@ RESTORE_COMPILER_WARNINGS
 #include <type_traits>
 #include <utility>
 
+STORE_COMPILER_WARNINGS
+DISABLE_MSVC_WARNING(4324) // structure was padded due to alignment specifier
+
 using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
 
 // A task bundled with an owner tag so that all of one owner's queued tasks can be removed at once via retire()
@@ -168,6 +171,8 @@ private:
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
 };
+
+RESTORE_COMPILER_WARNINGS
 
 namespace detail {
 
