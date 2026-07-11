@@ -38,9 +38,9 @@ public:
 	// This method is needed for shutdown - to wake up all the threads that wait on this queue
 	void wakeAllThreads();
 
-	// Removes every queued item matching the predicate. Thread-safe.
+	// Removes every queued item matching the predicate; returns how many were removed. Thread-safe.
 	template <typename Pred>
-	void remove_if(Pred pred);
+	size_t remove_if(Pred pred);
 
 	// Blocks until the queue is non-empty or the timeout elapses, WITHOUT popping anything. Thread-safe.
 	void waitForItem(uint32_t timeout_ms = uint32_max);
@@ -65,15 +65,18 @@ private:
 template <typename T>
 void CConsumerBlockingQueue<T>::wakeAllThreads()
 {
+	// This lock is not useless, it searializes the setting of terminate flag by the caller with checking it in the wait() predicate.
+	// It eliminates the window for lost wakeup.
+	std::lock_guard locker{ _mutex }; // The lock doesn't even need to be held when calling notify(), could release before, but for simplicity it stays
 	_cond.notify_all();
 }
 
 template <typename T>
 template <typename Pred>
-void CConsumerBlockingQueue<T>::remove_if(Pred pred)
+size_t CConsumerBlockingQueue<T>::remove_if(Pred pred)
 {
 	std::lock_guard<std::mutex> locker(_mutex);
-	std::erase_if(_queue, pred);
+	return std::erase_if(_queue, pred);
 }
 
 template <typename T>

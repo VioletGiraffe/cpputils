@@ -1,22 +1,30 @@
 #pragma once
 
 #include "cconsumerblockingqueue.h"
-#include "system/timing.h"
 
 #include "compiler/compiler_warnings_control.h"
 #include "math/math.hpp"
+#include "utility/aligned_wrapper.hpp"
 
 DISABLE_COMPILER_WARNINGS
 #include "3rdparty/function2/function2.hpp"
 RESTORE_COMPILER_WARNINGS
 
+#include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <future>
+#include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <utility>
+
+STORE_COMPILER_WARNINGS
+DISABLE_MSVC_WARNING(4324) // structure was padded due to alignment specifier
 
 using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
 
@@ -27,12 +35,17 @@ struct TaggedTask {
 	TaskType task;
 };
 
+// A pool of worker threads over per-thread task queues: enqueue() hash-picks a queue (no shared point of
+// contention between busy workers), and a worker that finds its own queue empty steals from the others,
+// so one busy queue cannot hold tasks hostage while other workers idle.
+// Idle workers all park on ONE shared condvar: since any of them can take any task, a producer wakes a
+// stealer with a single unrouted notify - no tracking of who sleeps where.
 class CWorkerThreadPool
 {
 	class CWorkerThread
 	{
 	public:
-		CWorkerThread(CConsumerBlockingQueue<TaggedTask>& queue, std::shared_mutex& poolMutex, std::string threadName);
+		CWorkerThread(CWorkerThreadPool& pool, size_t queueIndex, std::string threadName);
 		~CWorkerThread();
 
 		CWorkerThread(const CWorkerThread&) = delete;
@@ -44,19 +57,24 @@ class CWorkerThreadPool
 
 	private:
 		void threadFunc() noexcept;
+		// Pops a task: own queue first, then steals from the others. Must be called under a shared lock on
+		// _poolMutex so that retire()'s exclusive lock waits out whatever task is popped here.
+		bool tryGetTask(TaggedTask& task);
 
 	private:
-		CConsumerBlockingQueue<TaggedTask>& _queue;
-		std::shared_mutex& _poolMutex;
+		CWorkerThreadPool& _pool;
+		const size_t _queueIndex; // this worker's own queue in _pool._queues
 		const std::string _threadName;
-		std::thread _thread;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
 		std::atomic<bool> _finishPendingTasks {false};
+		// Must be the last member: its initialization starts the thread, which reads the members above -
+		// they have to be initialized by then
+		std::thread _thread;
 	};
 
 public:
-	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
+	CWorkerThreadPool(uint32_t maxNumThreads, std::string poolName);
 	~CWorkerThreadPool() noexcept = default;
 
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
@@ -68,44 +86,186 @@ public:
 	// with this tag is running and none remains queued. Call from the destructor of the object that owns the tag. Tag must be non-zero.
 	void retire(uint64_t tag);
 
-	// Returns the current queue length
+	// Returns the resulting length of the queue the task was pushed to
 	template <typename F>
 	size_t enqueue(F&& task, uint64_t tag = 0)
 	{
-		const uint64_t timestamp = rdtsc_fast_thread_local();
-		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
-		return _queues[index].push(TaggedTask{ tag, std::forward<F>(task) });
+		const uint32_t index = _laneSelector.value.fetch_add(1, std::memory_order_relaxed) % _maxNumThreads;
+		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
+		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
+		++_queuedCount;
+		const size_t queueLength = _queues[index].push(TaggedTask{ tag, std::forward<F>(task) });
+		// Wake one idle worker, if any: an idle worker can take ANY task (own lane or stolen), so a single
+		// notify_one on the shared condvar always suffices and cannot be misrouted. The lock is not superfluous:
+		// it forbids the notify from landing in the gap between a waiter's predicate check and its blocking
+		// (_queuedCount is modified outside _idleMutex). No idle workers - no lock taken, so the hot path of a
+		// saturated pool stays contention-free.
+		if (_idleCount.load() > 0)
+		{
+			std::lock_guard lock(_idleMutex);
+			_idleCv.notify_one();
+		}
+		return queueLength;
 	}
 
 	template <typename F>
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task, uint64_t tag = 0)
 	{
-		const uint64_t timestamp = rdtsc_fast_thread_local();
-		const size_t index = Math::reduce(static_cast<uint32_t>(timestamp ^ (timestamp >> 32)), (uint32_t)_maxNumThreads);
-
 		std::promise<void> p;
 		auto future = p.get_future();
-		_queues[index].push(TaggedTask{ tag, [task{ std::forward<F>(task) }, p{ std::move(p) }] () mutable {
+		enqueue([task{ std::forward<F>(task) }, p{ std::move(p) }] () mutable {
 			task();
 			p.set_value();
-		} });
-
+		}, tag);
 		return future;
 	}
+
+	// Runs fn(0) .. fn(count - 1) across the workers and the calling thread, returning once every call has
+	// completed. The calling thread participates on equal footing and can complete the entire range alone,
+	// which makes the call safe (deadlock-free) even from inside a pool task on a saturated pool. The caller
+	// does not process unrelated pool tasks while waiting for the last in-flight fn to return.
+	// fn is invoked concurrently and must not throw: the workers' exception containment would swallow the
+	// throw and the completion count would never be reached, leaving the caller waiting forever.
+	template <typename Fn>
+	void parallelFor(size_t count, Fn&& fn);
+
+	// The non-blocking parallelFor: returns as soon as the batch is dispatched; onAllCompleted then runs
+	// exactly once, on the worker that completes the last index - never on the calling thread (count == 0
+	// also dispatches to a worker). If the pool is destroyed before any worker picks the batch up, neither
+	// fn nor onAllCompleted runs. Like fn, onAllCompleted must not throw.
+	template <typename Fn, typename OnAllCompleted>
+	void parallelForAsync(size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted);
 
 	// Blocks until all the worker threads are started
 	void waitUntilStarted() noexcept;
 
 	[[nodiscard]] size_t maxWorkersCount() const;
+	// The number of queued (pushed, not yet popped) tasks. A task being executed is no longer counted, so 0 does
+	// NOT mean all work has finished - up to maxWorkersCount() tasks may still be running.
 	[[nodiscard]] size_t queueLength() const;
 
 private:
-	// Declared before the queues and threads so it outlives the worker threads that lock it.
+	const std::string _poolName;
+	const uint32_t _maxNumThreads;
+	Math::FastMod32 _laneSelectorMod;
+
+	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
+	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
+	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
+	// workers' wait predicate checks, so queued work keeps a would-be sleeper awake to steal.
+	std::atomic<size_t> _queuedCount{ 0 };
+	// The number of workers currently inside the idle wait; each transition is written solely by the waiting
+	// worker itself, so nothing can consume a worker's idle state and leave it desynced. Gates the producer-side
+	// notify. The (default, seq_cst) ordering makes the gate lossless: a parking worker increments this BEFORE
+	// its wait predicate reads _queuedCount, and a producer increments _queuedCount BEFORE reading this - so
+	// either the worker sees the new task and declines to block, or the producer sees the idler and notifies.
+	// Never neither. A stale nonzero read (the worker just left the wait) costs one notify into an empty condvar
+	// at worst: an awake worker always completes a full tryGetTask before re-parking, so no task is overlooked.
+	std::atomic<size_t> _idleCount{ 0 };
+	std::mutex _idleMutex;
+	std::condition_variable _idleCv;
 	// Worker pop+execute takes it shared; retire() takes it exclusive (see the .cpp for why).
 	std::shared_mutex _poolMutex;
-	// It is important that the queue is declared before threads (means it will only be destroyed after all the threads using it stop)
 	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues;
+	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
-	const std::string _poolName;
-	const size_t _maxNumThreads;
+	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
 };
+
+RESTORE_COMPILER_WARNINGS
+
+namespace detail {
+
+// The shared work-dispensing state of one parallelFor / parallelForAsync batch: indices are handed out one
+// at a time from the shared dispenser, so uneven per-index costs load-balance naturally. Owned via shared_ptr
+// by each helper task rather than the initiator's stack: a helper popped after the batch has already completed
+// still touches the dispenser (finds it exhausted and returns) - the initiator may be long gone by then. Late
+// helpers never invoke fn, so whatever fn references only has to stay alive until onAllCompleted has run.
+template <typename Fn, typename OnAllCompleted>
+struct ParallelBatchState
+{
+	ParallelBatchState(const size_t n, Fn&& f, OnAllCompleted&& onDone) :
+		count(n), fn(std::forward<Fn>(f)), onAllCompleted(std::forward<OnAllCompleted>(onDone))
+	{}
+
+	// Executes indices from the shared dispenser until they run out; the last completed index runs onAllCompleted.
+	void drainIndices()
+	{
+		for (;;)
+		{
+			const size_t index = nextIndex.fetch_add(1);
+			if (index >= count)
+				return;
+			fn(index);
+			if (completedCount.fetch_add(1) + 1 == count)
+				onAllCompleted();
+		}
+	}
+
+	std::atomic<size_t> nextIndex{ 0 };
+	std::atomic<size_t> completedCount{ 0 };
+	const size_t count;
+	std::decay_t<Fn> fn;
+	std::decay_t<OnAllCompleted> onAllCompleted;
+};
+
+template <typename Fn, typename OnAllCompleted>
+[[nodiscard]] auto makeParallelBatchState(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
+{
+	return std::make_shared<ParallelBatchState<Fn, OnAllCompleted>>(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
+}
+
+} // namespace detail
+
+template <typename Fn>
+void CWorkerThreadPool::parallelFor(const size_t count, Fn&& fn)
+{
+	if (count == 0)
+		return;
+	if (count == 1)
+	{
+		fn(size_t{ 0 });
+		return;
+	}
+
+	// The wait block is co-owned by the completion action rather than living on the caller's stack: the caller
+	// can wake on the predicate check alone (e.g. spuriously) right after 'done' is set and return, destroying
+	// a stack-owned mutex+condvar under the last worker's in-progress notify. Flipping 'done' under the mutex
+	// also keeps the notify from landing in the gap between the caller's predicate check and its blocking.
+	struct WaitSync
+	{
+		std::mutex mutex;
+		std::condition_variable allDone;
+		bool done = false;
+	};
+	auto sync = std::make_shared<WaitSync>();
+	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), [sync] {
+		std::lock_guard lock(sync->mutex);
+		sync->done = true;
+		sync->allDone.notify_one();
+	});
+
+	const uint32_t helperCount = (uint32_t)std::min<size_t>(count - 1, _maxNumThreads);
+	for (uint32_t i = 0; i < helperCount; ++i)
+		enqueue([state] { state->drainIndices(); });
+	state->drainIndices();
+
+	std::unique_lock lock(sync->mutex);
+	sync->allDone.wait(lock, [&sync] { return sync->done; });
+}
+
+template <typename Fn, typename OnAllCompleted>
+void CWorkerThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
+{
+	if (count == 0)
+	{
+		// No indices to dispense, but the contract stands: onAllCompleted still runs (once, on a worker)
+		enqueue([onAllCompleted{ std::forward<OnAllCompleted>(onAllCompleted) }] () mutable { onAllCompleted(); });
+		return;
+	}
+
+	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
+	const uint32_t helperCount = (uint32_t)std::min<size_t>(count, _maxNumThreads);
+	for (uint32_t i = 0; i < helperCount; ++i)
+		enqueue([state] { state->drainIndices(); });
+}
