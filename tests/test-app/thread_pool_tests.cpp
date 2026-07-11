@@ -570,8 +570,9 @@ TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
 
 TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
 {
-	const auto nThreads = std::max(2u, std::thread::hardware_concurrency() - 1);
-	::printf("Hardware concurrency: %d\n", nThreads);
+	const auto hw = std::thread::hardware_concurrency();
+	const auto nThreads = std::max(2u, hw - 1);
+	::printf("Threads: %d, hardware concurrency: %d\n", nThreads, hw);
 	bench(nThreads);
 }
 

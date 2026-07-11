@@ -1,11 +1,10 @@
 #pragma once
 
 #include "cconsumerblockingqueue.h"
-#include "system/timing.h"
 
 #include "compiler/compiler_warnings_control.h"
 #include "math/math.hpp"
-#include "hash/mixers.h"
+#include "utility/aligned_wrapper.hpp"
 
 DISABLE_COMPILER_WARNINGS
 #include "3rdparty/function2/function2.hpp"
@@ -88,8 +87,7 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task, uint64_t tag = 0)
 	{
-		const uint64_t mixed = mix_moremur(rdtsc_fast_thread_local());
-		const size_t index = Math::reduce(static_cast<uint32_t>(mixed), _maxNumThreads);
+		const uint32_t index = _laneSelector.value.fetch_add(1, std::memory_order_relaxed) % _maxNumThreads;
 		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
 		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
 		++_queuedCount;
@@ -146,6 +144,8 @@ public:
 private:
 	const std::string _poolName;
 	const uint32_t _maxNumThreads;
+	Math::FastMod32 _laneSelectorMod;
+
 	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
 	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
 	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
@@ -166,6 +166,7 @@ private:
 	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues;
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
+	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
 };
 
 namespace detail {

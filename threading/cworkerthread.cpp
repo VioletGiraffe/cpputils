@@ -147,7 +147,8 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 
 CWorkerThreadPool::CWorkerThreadPool(uint32_t numThreads, std::string poolName) :
 	_poolName(std::move(poolName)),
-	_maxNumThreads(numThreads)
+	_maxNumThreads(numThreads),
+	_laneSelectorMod(numThreads)
 {
 	_queues.resize(numThreads);
 	for (size_t i = 1; i <= numThreads; ++i)
