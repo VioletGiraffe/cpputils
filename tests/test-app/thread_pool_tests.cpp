@@ -75,7 +75,7 @@ TEST_CASE("Basic functionality", "[threadpool]")
 	SUCCEED();
 }
 
-static void bench(const size_t nThreads)
+static void bench(const uint32_t nThreads)
 {
 	static constexpr size_t nWorkloadItems = 31;
 	std::array <std::atomic_uint32_t, nWorkloadItems> workloadItems;

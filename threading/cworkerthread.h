@@ -71,7 +71,7 @@ class CWorkerThreadPool
 	};
 
 public:
-	CWorkerThreadPool(size_t maxNumThreads, std::string poolName);
+	CWorkerThreadPool(uint32_t maxNumThreads, std::string poolName);
 	~CWorkerThreadPool() noexcept = default;
 
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
@@ -144,7 +144,7 @@ public:
 
 private:
 	const std::string _poolName;
-	const size_t _maxNumThreads;
+	const uint32_t _maxNumThreads;
 	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
 	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
 	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
@@ -238,8 +238,8 @@ void CWorkerThreadPool::parallelFor(const size_t count, Fn&& fn)
 		sync->allDone.notify_one();
 	});
 
-	const size_t helperCount = std::min(count - 1, _maxNumThreads);
-	for (size_t i = 0; i < helperCount; ++i)
+	const uint32_t helperCount = (uint32_t)std::min<size_t>(count - 1, _maxNumThreads);
+	for (uint32_t i = 0; i < helperCount; ++i)
 		enqueue([state] { state->drainIndices(); });
 	state->drainIndices();
 
@@ -258,7 +258,7 @@ void CWorkerThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompl
 	}
 
 	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
-	const size_t helperCount = std::min(count, _maxNumThreads);
-	for (size_t i = 0; i < helperCount; ++i)
+	const uint32_t helperCount = (uint32_t)std::min<size_t>(count, _maxNumThreads);
+	for (uint32_t i = 0; i < helperCount; ++i)
 		enqueue([state] { state->drainIndices(); });
 }

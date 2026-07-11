@@ -50,61 +50,22 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 
 	setThreadName(_threadName.c_str());
 
-	try
+	while (!_terminate)
 	{
-		while (!_terminate)
+		bool ran = false;
 		{
-			bool ran = false;
-			{
-				// pop + execute together under a shared lock. retire() takes the same lock exclusively, so it can neither
-				// remove a task that's already running nor allow a task to start after its owner has been retired.
-				std::shared_lock sharedLock(_pool._poolMutex);
-				TaggedTask item;
-				if (tryGetTask(item))
-				{
-					// The task's exception is contained right here: a throw must not unwind threadFunc, which would
-					// silently and permanently shrink the pool by one worker. Inlined rather than a helper function:
-					// MSVC never inlines a function containing try, and the extra call is measurable on nanotasks.
-					// A future-wrapped task that throws leaves its promise unfulfilled, so the waiter gets
-					// std::future_error (broken_promise) rather than the task's exception.
-					try
-					{
-						item.task();
-					}
-					catch (const std::exception& e)
-					{
-						assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
-					}
-					catch (...)
-					{
-						assert_unconditional_r("Unknown exception in a worker task");
-					}
-					ran = true;
-				}
-			}
-
-			// Wait for new work OUTSIDE the pool lock: a blocking wait while holding it would stall retire() for the whole timeout.
-			// Wakes on _terminate and on _queuedCount becoming nonzero - i.e. on an enqueue to ANY queue, not just this
-			// worker's own: that is what lets an idle worker steal a busy owner's backlog. Both conditions are set outside
-			// _idleMutex, so they rely on the notify being sent under it (see enqueue() and stop()).
-			if (!ran)
-			{
-				++_pool._idleCount; // Before the predicate reads _queuedCount, or enqueue() could miss this sleeper (see _idleCount)
-				{
-					std::unique_lock lock(_pool._idleMutex);
-					_pool._idleCv.wait_for(lock, std::chrono::milliseconds(5000), [this] { return _terminate.load() || _pool._queuedCount.load() > 0; });
-				}
-				--_pool._idleCount;
-			}
-		}
-
-		if (_finishPendingTasks)
-		{
+			// pop + execute together under a shared lock. retire() takes the same lock exclusively, so it can neither
+			// remove a task that's already running nor allow a task to start after its owner has been retired.
+			std::shared_lock sharedLock(_pool._poolMutex);
 			TaggedTask item;
-			while (_pool._queues[_queueIndex].try_pop(item))
+			if (tryGetTask(item))
 			{
-				--_pool._queuedCount;
-				try // Same task-exception containment as in the main loop above
+				// The task's exception is contained right here: a throw must not unwind threadFunc, which would
+				// silently and permanently shrink the pool by one worker. Inlined rather than a helper function:
+				// MSVC never inlines a function containing try, and the extra call is measurable on nanotasks.
+				// A future-wrapped task that throws leaves its promise unfulfilled, so the waiter gets
+				// std::future_error (broken_promise) rather than the task's exception.
+				try
 				{
 					item.task();
 				}
@@ -116,16 +77,44 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 				{
 					assert_unconditional_r("Unknown exception in a worker task");
 				}
+				ran = true;
 			}
 		}
+
+		// Wait for new work OUTSIDE the pool lock: a blocking wait while holding it would stall retire() for the whole timeout.
+		// Wakes on _terminate and on _queuedCount becoming nonzero - i.e. on an enqueue to ANY queue, not just this
+		// worker's own: that is what lets an idle worker steal a busy owner's backlog. Both conditions are set outside
+		// _idleMutex, so they rely on the notify being sent under it (see enqueue() and stop()).
+		if (!ran)
+		{
+			++_pool._idleCount; // Before the predicate reads _queuedCount, or enqueue() could miss this sleeper (see _idleCount)
+			{
+				std::unique_lock lock(_pool._idleMutex);
+				_pool._idleCv.wait_for(lock, std::chrono::milliseconds(5000), [this] { return _terminate.load() || _pool._queuedCount.load() > 0; });
+			}
+			--_pool._idleCount;
+		}
 	}
-	catch (const std::exception& e)
+
+	if (_finishPendingTasks)
 	{
-		assert_unconditional_r(std::string{"std::exception caught: "} + e.what());
-	}
-	catch (...)
-	{
-		assert_unconditional_r("Unknown exception caught");
+		TaggedTask item;
+		while (_pool._queues[_queueIndex].try_pop(item))
+		{
+			--_pool._queuedCount;
+			try // Same task-exception containment as in the main loop above
+			{
+				item.task();
+			}
+			catch (const std::exception& e)
+			{
+				assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+			}
+			catch (...)
+			{
+				assert_unconditional_r("Unknown exception in a worker task");
+			}
+		}
 	}
 
 	_working = false;
@@ -156,12 +145,12 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 	return false;
 }
 
-CWorkerThreadPool::CWorkerThreadPool(size_t maxNumThreads, std::string poolName) :
+CWorkerThreadPool::CWorkerThreadPool(uint32_t numThreads, std::string poolName) :
 	_poolName(std::move(poolName)),
-	_maxNumThreads(maxNumThreads)
+	_maxNumThreads(numThreads)
 {
-	_queues.resize(maxNumThreads);
-	for (size_t i = 1; i <= maxNumThreads; ++i)
+	_queues.resize(numThreads);
+	for (size_t i = 1; i <= numThreads; ++i)
 	{
 		std::ostringstream stream;
 		stream << _poolName << " worker thread #" << i;
