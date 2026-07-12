@@ -56,7 +56,7 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 		{
 			// pop + execute together under a shared lock. retire() takes the same lock exclusively, so it can neither
 			// remove a task that's already running nor allow a task to start after its owner has been retired.
-			std::shared_lock sharedLock(_pool._poolMutex);
+			std::shared_lock sharedLock(_pool._poolMutex.value);
 			TaggedTask item;
 			if (tryGetTask(item))
 			{
@@ -87,12 +87,12 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 		// _idleMutex, so they rely on the notify being sent under it (see enqueue() and stop()).
 		if (!ran)
 		{
-			++_pool._idleCount; // Before the predicate reads _queuedCount, or enqueue() could miss this sleeper (see _idleCount)
+			++_pool._idleCount.value; // Before the predicate reads _queuedCount, or enqueue() could miss this sleeper (see _idleCount)
 			{
 				std::unique_lock lock(_pool._idleMutex);
-				_pool._idleCv.wait_for(lock, std::chrono::milliseconds(5000), [this] { return _terminate.load() || _pool._queuedCount.load() > 0; });
+				_pool._idleCv.wait_for(lock, std::chrono::milliseconds(5000), [this] { return _terminate.load() || _pool._queuedCount.value.load() > 0; });
 			}
-			--_pool._idleCount;
+			--_pool._idleCount.value;
 		}
 	}
 
@@ -101,7 +101,7 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 		TaggedTask item;
 		while (_pool._queues[_queueIndex].try_pop(item))
 		{
-			--_pool._queuedCount;
+			--_pool._queuedCount.value;
 			try // Same task-exception containment as in the main loop above
 			{
 				item.task();
@@ -124,12 +124,12 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 {
 	if (_pool._queues[_queueIndex].try_pop(task))
 	{
-		--_pool._queuedCount;
+		--_pool._queuedCount.value;
 		return true;
 	}
 	// Nothing queued anywhere - don't sweep every queue mutex for nothing (the transient overcount of a push
 	// in progress costs one wasted sweep at worst)
-	if (_pool._queuedCount.load() == 0)
+	if (_pool._queuedCount.value.load() == 0)
 		return false;
 	// Steal. Each worker's scan starts right past its own index, so concurrent thieves fan out over
 	// different victims instead of converging on the same queue.
@@ -139,7 +139,7 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 		const uint32_t victimIndex = _pool._laneSelectorMod.mod(static_cast<uint32_t>(_queueIndex + offset));
 		if (_pool._queues[victimIndex].try_pop(task))
 		{
-			--_pool._queuedCount;
+			--_pool._queuedCount.value;
 			return true;
 		}
 	}
@@ -166,9 +166,9 @@ void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
 		th.stop(completePendingTasks);
 
 	_workerThreads.clear();
-	assert_r(_idleCount == 0); // Every exited worker has left the idle wait and decremented; nonzero means a leak in the +/- pairing
+	assert_r(_idleCount.value == 0); // Every exited worker has left the idle wait and decremented; nonzero means a leak in the +/- pairing
 	if (completePendingTasks) // All queues drained, so any nonzero count means a pop/removal path missed its decrement
-		assert_r(_queuedCount == 0);
+		assert_r(_queuedCount.value == 0);
 }
 
 void CWorkerThreadPool::retire(uint64_t tag)
@@ -178,11 +178,11 @@ void CWorkerThreadPool::retire(uint64_t tag)
 	// Exclusive lock: blocks until every in-flight task (all shared holders) finishes, after which no task is running.
 	// Then drop this tag's not-yet-started tasks from every per-thread queue. A task with this tag cannot be enqueued
 	// concurrently here, because its only poster is the owner being destroyed (which is what called retire).
-	std::unique_lock exclusiveLock(_poolMutex);
+	std::unique_lock exclusiveLock(_poolMutex.value);
 	size_t removedCount = 0;
 	for (auto& q : _queues)
 		removedCount += q.remove_if([tag](const TaggedTask& item) { return item.tag == tag; });
-	_queuedCount -= removedCount;
+	_queuedCount.value -= removedCount;
 }
 
 void CWorkerThreadPool::waitUntilStarted() noexcept
@@ -203,5 +203,5 @@ size_t CWorkerThreadPool::maxWorkersCount() const
 
 size_t CWorkerThreadPool::queueLength() const
 {
-	return _queuedCount;
+	return _queuedCount.value;
 }

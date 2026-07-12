@@ -93,14 +93,14 @@ public:
 		const uint32_t index = _laneSelectorMod.mod(_laneSelector.value.fetch_add(1, std::memory_order_relaxed));
 		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
 		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
-		++_queuedCount;
+		++_queuedCount.value;
 		const size_t queueLength = _queues[index].push(TaggedTask{ tag, std::forward<F>(task) });
 		// Wake one idle worker, if any: an idle worker can take ANY task (own lane or stolen), so a single
 		// notify_one on the shared condvar always suffices and cannot be misrouted. The lock is not superfluous:
 		// it forbids the notify from landing in the gap between a waiter's predicate check and its blocking
 		// (_queuedCount is modified outside _idleMutex). No idle workers - no lock taken, so the hot path of a
 		// saturated pool stays contention-free.
-		if (_idleCount.load() > 0)
+		if (_idleCount.value.load() > 0)
 		{
 			std::lock_guard lock(_idleMutex);
 			_idleCv.notify_one();
@@ -145,15 +145,17 @@ public:
 	[[nodiscard]] size_t queueLength() const;
 
 private:
+	// Members are laid out by access pattern: read-only-after-ctor members first (can share cache lines freely),
+	// then the idle-wait group (only written when workers park/unpark, quiet while the pool is saturated),
+	// then the write-hot shared words - CacheLinePadded to a line each, so their RMW ping-pong does not
+	// invalidate the read-mostly lines or each other. _idleCount is padded too: it must not spill onto the
+	// read-only line above (benchmarked: park/unpark storms invalidating the _queues header line cost up to
+	// 2x in starved nanotask regimes), and its own line keeps enqueue()'s gate read clean of _idleMutex traffic.
 	const std::string _poolName;
 	const uint32_t _maxNumThreads;
 	Math::FastMod32 _laneSelectorMod;
+	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues; // Header written only in the ctor; the queues have their own internal locks
 
-	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
-	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
-	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
-	// workers' wait predicate checks, so queued work keeps a would-be sleeper awake to steal.
-	std::atomic<size_t> _queuedCount{ 0 };
 	// The number of workers currently inside the idle wait; each transition is written solely by the waiting
 	// worker itself, so nothing can consume a worker's idle state and leave it desynced. Gates the producer-side
 	// notify. The (default, seq_cst) ordering makes the gate lossless: a parking worker increments this BEFORE
@@ -161,13 +163,20 @@ private:
 	// either the worker sees the new task and declines to block, or the producer sees the idler and notifies.
 	// Never neither. A stale nonzero read (the worker just left the wait) costs one notify into an empty condvar
 	// at worst: an awake worker always completes a full tryGetTask before re-parking, so no task is overlooked.
-	std::atomic<size_t> _idleCount{ 0 };
+	CacheLinePadded<std::atomic<size_t>> _idleCount{ 0 };
 	std::mutex _idleMutex;
 	std::condition_variable _idleCv;
+
+	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 }; // RMW'd on every enqueue, by producers only
+	// Total items currently queued (pushed, not yet popped) across all the queues. Incremented before the push,
+	// decremented after every removal (pop/steal, shutdown drain, retire) - it must never underflow and must
+	// reach exactly 0 when all queues are empty (asserted after a draining shutdown). Nonzero is what idle
+	// workers' wait predicate checks, so queued work keeps a would-be sleeper awake to steal.
+	// The most contended word in the pool: RMW'd on every enqueue AND every pop/steal.
+	CacheLinePadded<std::atomic<size_t>> _queuedCount{ 0 };
 	// Worker pop+execute takes it shared; retire() takes it exclusive (see the .cpp for why).
-	std::shared_mutex _poolMutex;
-	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues;
-	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
+	// Two interlocked ops per task by every worker.
+	CacheLinePadded<std::shared_mutex> _poolMutex;
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 };
