@@ -133,7 +133,7 @@ static void bench(const uint32_t nThreads)
 
 	static constexpr size_t N = 100'000;
 
-	BENCHMARK("No future") {
+	BENCHMARK("Nanotasks") {
 		workload.reset();
 		for (size_t i = 0; i < N; ++i)
 			pool.enqueue([&workload, i{ i * 4999 }] { ++workload.slots[i % BenchWorkload::slotCount]; });
@@ -141,40 +141,6 @@ static void bench(const uint32_t nThreads)
 		waitForCompletion(pool, workload, N);
 
 		REQUIRE(workload.total() == N);
-		return pool.queueLength();
-	};
-
-	std::vector<std::future<void>> futures;
-	futures.reserve(N * 105); // Catch2 usually does 100 bench runs, and the following test cannot clear the vector
-
-	BENCHMARK("With future - no wait") {
-		workload.reset();
-		for (size_t i = 0; i < N; ++i)
-		{
-			futures.push_back(pool.enqueueWithFuture([&workload, i{ i * 4999 }] { ++workload.slots[i % BenchWorkload::slotCount]; }));
-		}
-
-		waitForCompletion(pool, workload, N);
-		return pool.queueLength();
-	};
-
-	futures.clear();
-	REQUIRE(workload.total() == N);
-	REQUIRE(pool.queueLength() == 0);
-
-	BENCHMARK("With future - waiting") {
-		workload.reset();
-		for (size_t i = 0; i < N; ++i)
-		{
-			futures.push_back(pool.enqueueWithFuture([&workload, i{ i * 4999 }] { ++workload.slots[i % BenchWorkload::slotCount]; }));
-		}
-
-		for (auto& f : futures)
-			f.get();
-
-		futures.clear();
-		REQUIRE(workload.total() == N);
-		REQUIRE(pool.queueLength() == 0);
 		return pool.queueLength();
 	};
 }
