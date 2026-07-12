@@ -136,7 +136,8 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 	const size_t n = _pool._maxNumThreads;
 	for (size_t offset = 1; offset < n; ++offset)
 	{
-		if (_pool._queues[(_queueIndex + offset) % n].try_pop(task))
+		const uint32_t victimIndex = _pool._laneSelectorMod.mod(static_cast<uint32_t>(_queueIndex + offset));
+		if (_pool._queues[victimIndex].try_pop(task))
 		{
 			--_pool._queuedCount;
 			return true;

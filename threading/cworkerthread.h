@@ -90,7 +90,7 @@ public:
 	template <typename F>
 	size_t enqueue(F&& task, uint64_t tag = 0)
 	{
-		const uint32_t index = _laneSelector.value.fetch_add(1, std::memory_order_relaxed) % _maxNumThreads;
+		const uint32_t index = _laneSelectorMod.mod(_laneSelector.value.fetch_add(1, std::memory_order_relaxed));
 		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
 		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
 		++_queuedCount;
@@ -167,9 +167,9 @@ private:
 	// Worker pop+execute takes it shared; retire() takes it exclusive (see the .cpp for why).
 	std::shared_mutex _poolMutex;
 	std::deque<CConsumerBlockingQueue<TaggedTask>> _queues;
+	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
-	CacheLinePadded<std::atomic<uint32_t>> _laneSelector{ 0 };
 };
 
 RESTORE_COMPILER_WARNINGS
