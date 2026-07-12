@@ -94,6 +94,12 @@ static void waitForCompletion(CWorkerThreadPool& pool, const BenchWorkload& work
 	// cache line every worker must update per pop (and hog a core the oversubscribed benches need)
 	while (pool.queueLength() > 0)
 		std::this_thread::yield();
+	// Popped-but-still-executing stragglers can run for milliseconds (spin-task benches), so wait them out
+	// with fine-grained yields first - the 10ms sleep quantization would drown an ~8ms sample. The sleep
+	// loop stays as a ~1s cap for a genuinely lost task.
+	const auto yieldDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+	while (workload.total() != expectedTotal && std::chrono::steady_clock::now() < yieldDeadline)
+		std::this_thread::yield();
 	for (int i = 0; i < 100 && workload.total() != expectedTotal; ++i)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
@@ -595,6 +601,8 @@ TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
 // - parallelFor: the fork-join API in fine-grained (dispenser-bound), coarse (Darkroom image-op shape), and
 //   repeated-small-batch (dispatch+join overhead) flavors.
 // - task latency: one task in flight on an idle pool - the full wake-path round trip, not throughput.
+// - work stealing: all heavy tasks deliberately piled onto ONE lane; drain time near the ideal parallel time
+//   demonstrates stealing works, and a steal-path regression would show as an ~nWorkers-fold jump.
 
 TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
 {
@@ -727,6 +735,38 @@ TEST_CASE("Benchmark - task latency", "[threadpool][benchmark]")
 	BENCHMARK("1000 single-task round trips") {
 		for (int i = 0; i < 1000; ++i)
 			pool.enqueueWithFuture([] {}).get();
+		return pool.queueLength();
+	};
+}
+
+TEST_CASE("Benchmark - work stealing", "[threadpool][benchmark]")
+{
+	// enqueue() assigns lanes round-robin with stride 1, so a heavy task posted every nWorkers-th enqueue lands
+	// on the SAME lane every time: all the heavy work piles onto one victim lane, and once the trivial fillers
+	// vanish, the only source of work for the other nWorkers-1 workers is stealing the victim's backlog.
+	// Expected drain time ~ the ideal parallel time, nRounds * heavyDuration / nWorkers; a degraded steal path
+	// would serialize the victim lane instead: ~nRounds * heavyDuration, i.e. an nWorkers-fold jump.
+	const uint32_t nWorkers = std::max(2u, std::thread::hardware_concurrency() - 1);
+	static constexpr uint32_t nRounds = 60;
+	static constexpr uint32_t heavyDurationUs = 2000;
+	const uint32_t heavySpinIterations = heavyDurationUs * spinIterationsPerMicrosecond();
+	::printf("Workers: %u, ideal drain: ~%u ms, serialized (no stealing) drain: ~%u ms\n",
+		nWorkers, nRounds * heavyDurationUs / nWorkers / 1000, nRounds * heavyDurationUs / 1000);
+
+	BenchWorkload workload;
+	CWorkerThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	BENCHMARK("All heavy tasks on one lane") {
+		workload.reset();
+		for (uint32_t round = 0; round < nRounds; ++round)
+		{
+			pool.enqueue([&workload, heavySpinIterations] { spinFor(heavySpinIterations); ++workload.slots[0]; });
+			for (uint32_t filler = 1; filler < nWorkers; ++filler)
+				pool.enqueue([&workload, filler] { ++workload.slots[filler % BenchWorkload::slotCount]; });
+		}
+		waitForCompletion(pool, workload, nRounds * nWorkers);
+		REQUIRE(workload.total() == nRounds * nWorkers);
 		return pool.queueLength();
 	};
 }
