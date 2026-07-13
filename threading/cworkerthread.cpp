@@ -53,12 +53,10 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 	while (!_terminate)
 	{
 		bool ran = false;
+		TaggedTask item;
+		if (tryGetTask(item))
 		{
-			// pop + execute together under a shared lock. retire() takes the same lock exclusively, so it can neither
-			// remove a task that's already running nor allow a task to start after its owner has been retired.
-			std::shared_lock sharedLock(_pool._poolMutex.value);
-			TaggedTask item;
-			if (tryGetTask(item))
+			if (_pool.taggedTaskCanRun(item.tagState))
 			{
 				// The task's exception is contained right here: a throw must not unwind threadFunc, which would
 				// silently and permanently shrink the pool by one worker. Inlined rather than a helper function:
@@ -77,11 +75,11 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 				{
 					assert_unconditional_r("Unknown exception in a worker task");
 				}
-				ran = true;
 			}
+			_pool.completeTaggedTask(item.tagState);
+			ran = true;
 		}
 
-		// Wait for new work OUTSIDE the pool lock: a blocking wait while holding it would stall retire() for the whole timeout.
 		// Wakes on _terminate and on _queuedCount becoming nonzero - i.e. on an enqueue to ANY queue, not just this
 		// worker's own: that is what lets an idle worker steal a busy owner's backlog. Both conditions are set outside
 		// _idleMutex, so they rely on the notify being sent under it (see enqueue() and stop()).
@@ -102,18 +100,22 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 		while (_pool._queues[_queueIndex].try_pop(item))
 		{
 			--_pool._queuedCount.value;
-			try // Same task-exception containment as in the main loop above
+			if (_pool.taggedTaskCanRun(item.tagState))
 			{
-				item.task();
+				try // Same task-exception containment as in the main loop above
+				{
+					item.task();
+				}
+				catch (const std::exception& e)
+				{
+					assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+				}
+				catch (...)
+				{
+					assert_unconditional_r("Unknown exception in a worker task");
+				}
 			}
-			catch (const std::exception& e)
-			{
-				assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
-			}
-			catch (...)
-			{
-				assert_unconditional_r("Unknown exception in a worker task");
-			}
+			_pool.completeTaggedTask(item.tagState);
 		}
 	}
 
@@ -175,14 +177,53 @@ void CWorkerThreadPool::retire(uint64_t tag)
 {
 	assert_debug_only(tag != 0); // Tag 0 is the "untagged" sentinel and must never be retired (it would wipe unrelated tasks)
 
-	// Exclusive lock: blocks until every in-flight task (all shared holders) finishes, after which no task is running.
-	// Then drop this tag's not-yet-started tasks from every per-thread queue. A task with this tag cannot be enqueued
-	// concurrently here, because its only poster is the owner being destroyed (which is what called retire).
-	std::unique_lock exclusiveLock(_poolMutex.value);
+	TaskTagState* tagState;
+	{
+		std::lock_guard lock(_tagStateMutex);
+		const auto it = _tagStates.find(tag);
+		if (it == _tagStates.end())
+			return;
+
+		tagState = it->second.get();
+		assert_debug_only(!tagState->retired);
+		tagState->retired = true;
+	}
+
+	// Each queue lock decides whether a task is removed here or has already been popped by a worker. Popped tasks
+	// remain in outstandingTaskCount and either finish normally or observe retired and are skipped before execution.
 	size_t removedCount = 0;
 	for (auto& q : _queues)
-		removedCount += q.remove_if([tag](const TaggedTask& item) { return item.tag == tag; });
+		removedCount += q.remove_if([tagState](const TaggedTask& item) { return item.tagState == tagState; });
 	_queuedCount.value -= removedCount;
+
+	std::unique_lock lock(_tagStateMutex);
+	assert_debug_only(tagState->outstandingTaskCount >= removedCount);
+	tagState->outstandingTaskCount -= removedCount;
+	_tagStateChanged.wait(lock, [tagState] { return tagState->outstandingTaskCount == 0; });
+
+	const auto it = _tagStates.find(tag);
+	if (it != _tagStates.end() && it->second.get() == tagState)
+		_tagStates.erase(it);
+}
+
+bool CWorkerThreadPool::taggedTaskCanRun(const TaskTagState* tagState)
+{
+	if (!tagState)
+		return true;
+
+	std::lock_guard lock(_tagStateMutex);
+	return !tagState->retired;
+}
+
+void CWorkerThreadPool::completeTaggedTask(TaskTagState* tagState)
+{
+	if (!tagState)
+		return;
+
+	std::lock_guard lock(_tagStateMutex);
+	assert_debug_only(tagState->outstandingTaskCount > 0);
+	if (--tagState->outstandingTaskCount == 0)
+		_tagStateChanged.notify_all();
 }
 
 void CWorkerThreadPool::waitUntilStarted() noexcept

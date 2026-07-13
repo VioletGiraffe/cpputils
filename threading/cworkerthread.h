@@ -2,6 +2,7 @@
 
 #include "cconsumerblockingqueue.h"
 
+#include "assert/advanced_assert.h"
 #include "compiler/compiler_warnings_control.h"
 #include "math/math.hpp"
 #include "utility/aligned_wrapper.hpp"
@@ -17,10 +18,10 @@ RESTORE_COMPILER_WARNINGS
 #include <future>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 STORE_COMPILER_WARNINGS
@@ -28,10 +29,15 @@ DISABLE_MSVC_WARNING(4324) // structure was padded due to alignment specifier
 
 using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
 
-// A task bundled with an owner tag so that all of one owner's queued tasks can be removed at once via retire()
-// (e.g. when the object that posted them is being destroyed). Tag 0 is the "untagged" sentinel and is never retired.
+struct TaskTagState {
+	size_t outstandingTaskCount = 0; // Queued + popped/running; registered before a task becomes visible to workers
+	bool retired = false;
+};
+
+// A task bundled with owner-tag state so retire() can remove queued tasks and wait only for this owner's
+// popped/running tasks. A null state is the untagged sentinel and has no tracking overhead.
 struct TaggedTask {
-	uint64_t tag = 0;
+	TaskTagState* tagState = nullptr;
 	TaskType task;
 };
 
@@ -57,8 +63,7 @@ class CWorkerThreadPool
 
 	private:
 		void threadFunc() noexcept;
-		// Pops a task: own queue first, then steals from the others. Must be called under a shared lock on
-		// _poolMutex so that retire()'s exclusive lock waits out whatever task is popped here.
+		// Pops a task: own queue first, then steals from the others.
 		bool tryGetTask(TaggedTask& task);
 
 	private:
@@ -82,8 +87,9 @@ public:
 
 	void finishAllThreads(bool completePendingTasks = false); // Does the same thing the destructor does, but can be called when needed
 
-	// Removes all of this tag's not-yet-started tasks and waits out any in-flight task, so that once it returns no task
-	// with this tag is running and none remains queued. Call from the destructor of the object that owns the tag. Tag must be non-zero.
+	// Removes this tag's queued tasks and waits out any popped/running task, so that once it returns no task with this tag
+	// is running or queued. The owner must stop submitting before calling this from its destructor.
+	// Tag must be non-zero.
 	void retire(uint64_t tag);
 
 	// Returns the resulting length of the queue the task was pushed to
@@ -91,10 +97,38 @@ public:
 	size_t enqueue(F&& task, uint64_t tag = 0)
 	{
 		const uint32_t index = _laneSelectorMod.mod(_laneSelector.value.fetch_add(1, std::memory_order_relaxed));
+		TaggedTask taggedTask{ nullptr, std::forward<F>(task) };
+		TaskTagState* tagState = nullptr;
+		if (tag != 0)
+		{
+			std::lock_guard lock(_tagStateMutex);
+			auto tagStateIt = _tagStates.find(tag);
+			if (tagStateIt == _tagStates.end())
+				tagStateIt = _tagStates.emplace(tag, std::make_unique<TaskTagState>()).first;
+			tagState = tagStateIt->second.get();
+
+			assert_debug_only(!tagState->retired); // Enqueuing after the owner has begun retiring is a lifetime bug
+			if (tagState->retired)
+				return 0;
+
+			++tagState->outstandingTaskCount;
+			taggedTask.tagState = tagState;
+		}
+
 		// Incremented BEFORE the push: a task stolen (and decremented) before its own increment would underflow
 		// the count. The transient overcount only costs a parked worker one wasted wakeup+rescan.
 		++_queuedCount.value;
-		const size_t queueLength = _queues[index].push(TaggedTask{ tag, std::forward<F>(task) });
+		size_t queueLength;
+		try
+		{
+			queueLength = _queues[index].push(std::move(taggedTask));
+		}
+		catch (...)
+		{
+			--_queuedCount.value;
+			completeTaggedTask(tagState);
+			throw;
+		}
 		// Wake one idle worker, if any: an idle worker can take ANY task (own lane or stolen), so a single
 		// notify_one on the shared condvar always suffices and cannot be misrouted. The lock is not superfluous:
 		// it forbids the notify from landing in the gap between a waiter's predicate check and its blocking
@@ -145,6 +179,9 @@ public:
 	[[nodiscard]] size_t queueLength() const;
 
 private:
+	[[nodiscard]] bool taggedTaskCanRun(const TaskTagState* tagState);
+	void completeTaggedTask(TaskTagState* tagState);
+
 	// Members are laid out by access pattern: read-only-after-ctor members first (can share cache lines freely),
 	// then the idle-wait group (only written when workers park/unpark, quiet while the pool is saturated),
 	// then the write-hot shared words - CacheLinePadded to a line each, so their RMW ping-pong does not
@@ -174,9 +211,12 @@ private:
 	// workers' wait predicate checks, so queued work keeps a would-be sleeper awake to steal.
 	// The most contended word in the pool: RMW'd on every enqueue AND every pop/steal.
 	CacheLinePadded<std::atomic<size_t>> _queuedCount{ 0 };
-	// Worker pop+execute takes it shared; retire() takes it exclusive (see the .cpp for why).
-	// Two interlocked ops per task by every worker.
-	CacheLinePadded<std::shared_mutex> _poolMutex;
+
+	// Tagged tasks register here before they become visible in a queue. Workers touch this state only at task
+	// boundaries; task execution never holds the mutex, so retiring one tag cannot wait on unrelated work.
+	std::mutex _tagStateMutex;
+	std::condition_variable _tagStateChanged;
+	std::unordered_map<uint64_t, std::unique_ptr<TaskTagState>> _tagStates;
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 };

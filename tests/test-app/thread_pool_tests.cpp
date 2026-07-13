@@ -485,9 +485,8 @@ TEST_CASE("retire()", "[threadpool]")
 			untaggedFutures.push_back(pool.enqueueWithFuture([&untaggedRun] { ++untaggedRun; }));
 
 		pool.retire(tag);
-		// The contract: after retire() returns, no tagged task is running or queued. It does NOT promise none ran:
-		// when the blocker finishes, the worker's next shared-lock acquisition can beat retire()'s exclusive one
-		// and execute some tagged tasks first - retire() then waits them out. So assert stability, not zero.
+		// The contract: after retire() returns, no tagged task is running or queued. A task already popped before
+		// retirement may have started and been waited out, so assert stability rather than assuming none ran.
 		const int taggedAtReturn = taggedRun;
 
 		for (auto& f : untaggedFutures)
@@ -517,10 +516,8 @@ TEST_CASE("retire()", "[threadpool]")
 
 TEST_CASE("retire() on a busy multi-thread pool", "[threadpool]")
 {
-	// The single-thread retire() tests pin the contract deterministically; here retire()'s exclusive lock must
-	// wedge itself between 4 workers continuously holding the shared pop+execute lock. The contract half under
-	// test: no tagged task may run after retire() returns - each tagged task checks the flag that is set right
-	// at that point. (Tagged tasks running shortly BEFORE the return are allowed, see the single-thread test.)
+	// The single-thread retire() tests pin the contract deterministically. This checks the other half under a
+	// contended, work-stealing backlog: no tagged task may run after retire() returns.
 	std::atomic_bool retired{ false };
 	std::atomic_int taggedRunAfterRetire{ 0 };
 	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
@@ -544,6 +541,39 @@ TEST_CASE("retire() on a busy multi-thread pool", "[threadpool]")
 	for (auto& f : untaggedFutures)
 		f.get();
 	REQUIRE(taggedRunAfterRetire == 0);
+}
+
+TEST_CASE("retire() waits only for the matching tag", "[threadpool]")
+{
+	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	std::promise<void> releaseRetiredTask, releaseUnrelatedTask;
+	auto retiredTaskRelease = releaseRetiredTask.get_future().share();
+	auto unrelatedTaskRelease = releaseUnrelatedTask.get_future().share();
+	std::atomic_bool retiredTaskStarted{ false }, unrelatedTaskStarted{ false };
+
+	static constexpr uint64_t retiredTag = 17;
+	static constexpr uint64_t unrelatedTag = 18;
+	pool.enqueue([&retiredTaskStarted, retiredTaskRelease] {
+		retiredTaskStarted = true;
+		retiredTaskRelease.wait();
+	}, retiredTag);
+	pool.enqueue([&unrelatedTaskStarted, unrelatedTaskRelease] {
+		unrelatedTaskStarted = true;
+		unrelatedTaskRelease.wait();
+	}, unrelatedTag);
+
+	while (!retiredTaskStarted || !unrelatedTaskStarted)
+		std::this_thread::yield();
+
+	auto retirement = std::async(std::launch::async, [&pool] { pool.retire(retiredTag); });
+	releaseRetiredTask.set_value();
+	const bool retiredWhileUnrelatedTaskWasStillRunning = retirement.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+
+	// Always release the unrelated worker before asserting, so a failing implementation can still tear down cleanly.
+	releaseUnrelatedTask.set_value();
+	retirement.get();
+	pool.retire(unrelatedTag);
+	REQUIRE(retiredWhileUnrelatedTaskWasStillRunning);
 }
 
 TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
