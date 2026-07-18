@@ -38,7 +38,7 @@ jobs:
         arch: x64
 
     - name: Install dependencies
-      run: git clone https://github.com/VioletGiraffe/cpp-template-utils
+      run: git clone https://github.com/VioletGiraffe/cpp-template-utils --depth 1
 
     - name: Windows
       if: startsWith(matrix.os, 'windows')
