@@ -48,6 +48,44 @@ TEST_CASE("Execution queue can execute one queued task at a time", "[executionqu
 	REQUIRE(executedTaskCount == 2);
 }
 
+TEST_CASE("Execution queue defers tasks added while executing the current batch", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	std::vector<int> executionOrder;
+
+	queue.enqueue([&queue, &executionOrder]
+	{
+		executionOrder.push_back(1);
+		queue.enqueue([&executionOrder] { executionOrder.push_back(3); });
+	});
+	queue.enqueue([&executionOrder] { executionOrder.push_back(2); });
+
+	queue.exec();
+	const std::vector<int> firstBatchExpectedOrder{ 1, 2 };
+	REQUIRE(executionOrder == firstBatchExpectedOrder);
+
+	queue.exec();
+	const std::vector<int> finalExpectedOrder{ 1, 2, 3 };
+	REQUIRE(executionOrder == finalExpectedOrder);
+}
+
+TEST_CASE("Execution queue preserves tagged replacement during a batch", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	std::vector<int> executionOrder;
+
+	queue.enqueue([&queue, &executionOrder]
+	{
+		executionOrder.push_back(1);
+		queue.enqueue([&executionOrder] { executionOrder.push_back(3); }, 7);
+	});
+	queue.enqueue([&executionOrder] { executionOrder.push_back(2); }, 7);
+
+	queue.exec();
+	const std::vector<int> expectedOrder{ 1, 3 };
+	REQUIRE(executionOrder == expectedOrder);
+}
+
 TEST_CASE("Execution queue accepts move-only tasks", "[executionqueue]")
 {
 	CExecutionQueue queue;
