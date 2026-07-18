@@ -27,7 +27,7 @@ RESTORE_COMPILER_WARNINGS
 STORE_COMPILER_WARNINGS
 DISABLE_MSVC_WARNING(4324) // structure was padded due to alignment specifier
 
-using TaskType = fu2::function_base < true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>)>, true, false, void() > ;
+using TaskType = fu2::function_base<true, false, fu2::capacity_fixed<16 + sizeof(std::promise<void>) + 64 /*arbitrary reserve for captures */>, true, false, void()>;
 
 struct TaskTagState {
 	size_t outstandingTaskCount = 0; // Queued + popped/running; registered before a task becomes visible to workers
