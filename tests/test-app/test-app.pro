@@ -49,5 +49,6 @@ LIBS += \
 	-lcpputils
 
 SOURCES += \
+	execution_queue_tests.cpp \
 	main.cpp \
 	thread_pool_tests.cpp

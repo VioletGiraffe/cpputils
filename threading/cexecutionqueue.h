@@ -1,17 +1,26 @@
 #pragma once
 
+#include "compiler/compiler_warnings_control.h"
+
+DISABLE_COMPILER_WARNINGS
+#include "3rdparty/function2/function2.hpp"
+RESTORE_COMPILER_WARNINGS
+
 #include <algorithm>
 #include <deque>
-#include <functional>
 #include <mutex>
+#include <utility>
 
 // A thread-safe class for delayed code execution, useful for cross-thread execution / communication
 class CExecutionQueue
 {
+	// Fits a this pointer and three 64-bit values without allocating on 64-bit platforms.
+	using Task = fu2::function_base<true, false, fu2::capacity_fixed<32>, true, false, void()>;
+
 	struct Executee
 	{
 		int tag = 0;
-		std::function<void ()> code;
+		Task code;
 	};
 
 
@@ -28,14 +37,14 @@ public:
 		std::lock_guard<std::mutex> locker(_queueMutex);
 	}
 
-	inline void enqueue(std::function<void ()> code, int tag = -1)
+	inline void enqueue(Task code, int tag = -1)
 	{
 		std::lock_guard<std::mutex> locker(_queueMutex);
 		const auto existingExecutee = tag == -1 ? _queue.end() : std::find_if(_queue.begin(), _queue.end(), [tag](const Executee& e){return e.tag == tag;});
-		if (existingExecutee == _queue.end())
-			_queue.emplace_back(Executee{ tag, std::move(code) });
-		else
-			existingExecutee->code = std::move(code);
+		if (existingExecutee != _queue.end())
+			_queue.erase(existingExecutee);
+
+		_queue.emplace_back(Executee{ tag, std::move(code) });
 	}
 
 	inline void exec(ExecutionMode mode = execAll)
@@ -57,7 +66,7 @@ private:
 		std::lock_guard<std::mutex> locker(_queueMutex);
 		if (!_queue.empty())
 		{
-			e = _queue.front();
+			e = std::move(_queue.front());
 			_queue.pop_front();
 			return true;
 		}
@@ -69,4 +78,3 @@ private:
 	std::deque<Executee> _queue;
 	std::mutex           _queueMutex;
 };
-
