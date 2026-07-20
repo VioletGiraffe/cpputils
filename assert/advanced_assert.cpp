@@ -1,5 +1,8 @@
 #include "advanced_assert.h"
 
+#include "string/string_helpers.hpp"
+
+#include <string>
 #include <utility>
 
 #if (defined _DEBUG && defined NDEBUG && NDEBUG != 0) || (!defined _DEBUG && defined NDEBUG && NDEBUG != 1)
