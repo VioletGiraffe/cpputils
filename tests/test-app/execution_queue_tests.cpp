@@ -120,3 +120,56 @@ TEST_CASE("Execution queue accepts tasks from multiple producer threads", "[exec
 	queue.exec();
 	REQUIRE(executedTaskCount == producerCount * tasksPerProducer);
 }
+
+TEST_CASE("Execution queue exec() on an empty queue is a no-op", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	queue.exec(CExecutionQueue::execFirst); // Neither mode may touch the empty deque or block
+	queue.exec(CExecutionQueue::execAll);
+	SUCCEED();
+}
+
+TEST_CASE("Execution queue execFirst runs the oldest task first", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	std::vector<int> executionOrder;
+
+	queue.enqueue([&executionOrder] { executionOrder.push_back(1); });
+	queue.enqueue([&executionOrder] { executionOrder.push_back(2); });
+	queue.enqueue([&executionOrder] { executionOrder.push_back(3); });
+
+	queue.exec(CExecutionQueue::execFirst);
+	REQUIRE(executionOrder == std::vector<int>{ 1 });
+	queue.exec(CExecutionQueue::execFirst);
+	REQUIRE(executionOrder == std::vector<int>{ 1, 2 });
+	queue.exec(CExecutionQueue::execFirst);
+	REQUIRE(executionOrder == std::vector<int>{ 1, 2, 3 });
+}
+
+TEST_CASE("Replacing a tagged task leaves a different tag untouched", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	std::vector<int> executionOrder;
+
+	queue.enqueue([&executionOrder] { executionOrder.push_back(1); }, 7);
+	queue.enqueue([&executionOrder] { executionOrder.push_back(2); }, 8);
+	queue.enqueue([&executionOrder] { executionOrder.push_back(3); }, 7); // Replaces only the tag-7 task
+
+	queue.exec();
+
+	// Tag 8 keeps its slot; the replacement tag-7 task runs where it was re-appended, after tag 8.
+	const std::vector<int> expectedOrder{ 2, 3 };
+	REQUIRE(executionOrder == expectedOrder);
+}
+
+TEST_CASE("Execution queue skips an empty task rather than invoking it", "[executionqueue]")
+{
+	CExecutionQueue queue;
+	int executedTaskCount = 0;
+
+	queue.enqueue({}); // Default-constructed, empty task: exec() must skip it via the `if (task.code)` guard
+	queue.enqueue([&executedTaskCount] { ++executedTaskCount; });
+
+	queue.exec();
+	REQUIRE(executedTaskCount == 1);
+}

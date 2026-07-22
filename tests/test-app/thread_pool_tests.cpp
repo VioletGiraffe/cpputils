@@ -4,7 +4,10 @@
 #include "threading/cworkerthread.h"
 
 #include <array>
+#include <future>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
 
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
@@ -585,6 +588,115 @@ TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
 
 	pool.finishAllThreads(true);
 	REQUIRE(counter == 200);
+}
+
+TEST_CASE("maxWorkersCount reports the configured worker count", "[threadpool]")
+{
+	CWorkerThreadPool pool(3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	REQUIRE(pool.maxWorkersCount() == 3);
+}
+
+TEST_CASE("retire() of a tag that was never used is a prompt no-op", "[threadpool]")
+{
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr uint64_t usedTag = 5;
+	std::atomic_int unrelatedRun{ 0 };
+	pool.enqueue([&unrelatedRun] { ++unrelatedRun; }, usedTag);
+
+	const auto start = std::chrono::steady_clock::now();
+	pool.retire(999); // Unknown tag: hits the "not found" early return - must not block or disturb usedTag
+	CHECK(elapsedMs(start) < 500);
+
+	pool.finishAllThreads(true);
+	REQUIRE(unrelatedRun == 1);
+}
+
+TEST_CASE("A tag is reusable after it has been retired", "[threadpool]")
+{
+	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr uint64_t tag = 21;
+
+	std::atomic_int firstGenRun{ 0 };
+	pool.enqueueWithFuture([&firstGenRun] { ++firstGenRun; }, tag).get();
+	pool.retire(tag); // Waits the task out and erases the tag's state entirely
+	REQUIRE(firstGenRun == 1);
+
+	// Re-enqueuing under the same value must create fresh (non-retired) state and run normally.
+	std::atomic_int secondGenRun{ 0 };
+	pool.enqueueWithFuture([&secondGenRun] { ++secondGenRun; }, tag).get();
+	REQUIRE(secondGenRun == 1);
+
+	pool.retire(tag);
+}
+
+TEST_CASE("enqueueWithFuture surfaces a throwing task as broken_promise", "[threadpool]")
+{
+	// The worker contains the task's exception (logged via assert_unconditional_r, which does not abort in a
+	// release build) and never fulfills the wrapper's promise, so the future observes broken_promise - the
+	// contract documented in cworkerthread.h. Meaningful in a release build; a debug build trips the assert.
+	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	auto future = pool.enqueueWithFuture([] { throw std::runtime_error("deliberate task failure"); });
+
+	bool threwBrokenPromise = false;
+	try
+	{
+		future.get();
+	}
+	catch (const std::future_error& e)
+	{
+		threwBrokenPromise = e.code() == std::future_errc::broken_promise;
+	}
+	CHECK(threwBrokenPromise);
+}
+
+TEST_CASE("enqueue under a tag whose retire() is in progress is dropped", "[threadpool]")
+{
+	// While retire() is parked waiting on an already-running task of the same tag, retired == true is visible to
+	// enqueue(): the racing enqueue must drop the task and return 0 (a debug build trips assert_debug_only here
+	// instead). Each attempt carries its own flag, so attempts that lost the race - accepted before retired was
+	// set - cannot affect the assertion on the one attempt that was actually dropped.
+	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr uint64_t tag = 77;
+	std::promise<void> releaseBlocker;
+	auto blockerRelease = releaseBlocker.get_future().share();
+	std::atomic_bool blockerStarted{ false };
+
+	// Holds the tag's outstanding count at 1 so retire() blocks in its wait, keeping retired == true throughout.
+	pool.enqueue([&blockerStarted, blockerRelease] {
+		blockerStarted = true;
+		blockerRelease.wait();
+	}, tag);
+	while (!blockerStarted)
+		std::this_thread::yield();
+
+	auto retirement = std::async(std::launch::async, [&pool] { pool.retire(tag); });
+
+	// retire() sets retired == true almost immediately; retry until an enqueue reports the drop (returns 0).
+	std::shared_ptr<std::atomic_bool> droppedTaskRan;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (std::chrono::steady_clock::now() < deadline)
+	{
+		auto ran = std::make_shared<std::atomic_bool>(false);
+		if (pool.enqueue([ran] { *ran = true; }, tag) == 0)
+		{
+			droppedTaskRan = ran;
+			break;
+		}
+		std::this_thread::yield();
+	}
+	REQUIRE(droppedTaskRan); // retire() must have presented the drop path within the deadline
+
+	releaseBlocker.set_value();
+	retirement.get();
+	CHECK(*droppedTaskRan == false); // The dropped task was never scheduled, so it cannot have run
 }
 
 // Benchmark regime map - each case isolates a distinct operating regime of the pool:
