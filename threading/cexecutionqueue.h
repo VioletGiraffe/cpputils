@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assert/advanced_assert.h"
 #include "compiler/compiler_warnings_control.h"
 
 DISABLE_COMPILER_WARNINGS
@@ -9,7 +10,9 @@ RESTORE_COMPILER_WARNINGS
 #include <algorithm>
 #include <cstddef>
 #include <deque>
+#include <exception>
 #include <mutex>
+#include <string>
 #include <utility>
 
 // A thread-safe class for delayed code execution, useful for cross-thread execution / communication
@@ -65,8 +68,22 @@ public:
 		while (tasksToExecute > 0 && tryPop(queuedTask))
 		{
 			--tasksToExecute;
-			if (queuedTask.code)
+			if (!queuedTask.code)
+				continue;
+
+			// Contain each task so one that throws cannot abort the rest of the batch or reach the caller's loop.
+			try
+			{
 				queuedTask.code();
+			}
+			catch (const std::exception& e)
+			{
+				assert_unconditional_r(std::string{ "Exception in a queued task: " } + e.what());
+			}
+			catch (...)
+			{
+				assert_unconditional_r("Unknown exception in a queued task");
+			}
 		}
 	}
 

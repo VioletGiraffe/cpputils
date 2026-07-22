@@ -372,6 +372,28 @@ TEST_CASE("Nested parallelFor from inside pool tasks does not deadlock", "[threa
 	REQUIRE(total == 8000);
 }
 
+TEST_CASE("parallelFor contains a throwing fn and still completes", "[threadpool][parallelfor]")
+{
+	// A throwing fn must not strand the batch: the throw is contained + logged (release-only, like the pool's task
+	// containment), the completion count still advances, and parallelFor returns instead of hanging. Every index's
+	// fn is entered exactly once - hits[i] is bumped before the throw - so a full count proves nothing was skipped.
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	pool.waitUntilStarted();
+
+	static constexpr size_t count = 64;
+	std::vector<std::atomic_int> hits(count);
+	pool.parallelFor(count, [&hits](size_t i) {
+		++hits[i];
+		if (i % 7 == 0)
+			throw std::runtime_error("deliberate parallelFor failure");
+	});
+
+	size_t ranCount = 0;
+	for (const auto& h : hits)
+		ranCount += h == 1 ? 1 : 0;
+	REQUIRE(ranCount == count);
+}
+
 TEST_CASE("parallelForAsync executes every index exactly once, then completes", "[threadpool][parallelforasync]")
 {
 	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
@@ -588,6 +610,23 @@ TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
 
 	pool.finishAllThreads(true);
 	REQUIRE(counter == 200);
+}
+
+TEST_CASE("finishAllThreads(true) completes tasks spawned during the drain", "[threadpool]")
+{
+	// The fan-out keeps enqueuing child tasks onto arbitrary lanes while the pool shuts down. A drain that closed
+	// lanes one at a time would orphan children that landed on an already-closed lane; the central drain must run
+	// every node. Deliberately no waitUntilStarted(), so shutdown races the still-expanding tree. Needs >= 2 workers
+	// (a single-lane pool cannot orphan) and is timing-sensitive by nature, like the [stealing] tests.
+	std::atomic_int counter{ 0 };
+	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+
+	static constexpr int depth = 12;
+	static constexpr int expected = (1 << (depth + 1)) - 1; // node count of the full binary tree
+	pool.enqueue([&pool, &counter] { runFanOutTask(pool, counter, depth); });
+
+	pool.finishAllThreads(true);
+	REQUIRE(counter == expected);
 }
 
 TEST_CASE("maxWorkersCount reports the configured worker count", "[threadpool]")

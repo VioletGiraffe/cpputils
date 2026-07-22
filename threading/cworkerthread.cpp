@@ -23,10 +23,8 @@ bool CWorkerThreadPool::CWorkerThread::isStarted() const noexcept
 	return _working;
 }
 
-void CWorkerThreadPool::CWorkerThread::stop(bool finishPendingTasks)
+void CWorkerThreadPool::CWorkerThread::stop()
 {
-	// The order matters
-	_finishPendingTasks = finishPendingTasks;
 	_terminate = true;
 
 	// In case the thread was already in the idle wait. The lock serializes the terminate store above with a
@@ -94,31 +92,6 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 		}
 	}
 
-	if (_finishPendingTasks)
-	{
-		TaggedTask item;
-		while (_pool._queues[_queueIndex].try_pop(item))
-		{
-			--_pool._queuedCount.value;
-			if (_pool.taggedTaskCanRun(item.tagState))
-			{
-				try // Same task-exception containment as in the main loop above
-				{
-					item.task();
-				}
-				catch (const std::exception& e)
-				{
-					assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
-				}
-				catch (...)
-				{
-					assert_unconditional_r("Unknown exception in a worker task");
-				}
-			}
-			_pool.completeTaggedTask(item.tagState);
-		}
-	}
-
 	_working = false;
 }
 
@@ -165,12 +138,33 @@ CWorkerThreadPool::CWorkerThreadPool(uint32_t numThreads, std::string poolName) 
 void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
 {
 	for (auto& th : _workerThreads)
-		th.stop(completePendingTasks);
+		th.stop(); // Terminate and join; any queued tasks are left in place for the drain below
 
 	_workerThreads.clear();
 	assert_r(_idleCount.value == 0); // Every exited worker has left the idle wait and decremented; nonzero means a leak in the +/- pairing
-	if (completePendingTasks) // All queues drained, so any nonzero count means a pop/removal path missed its decrement
-		assert_r(_queuedCount.value == 0);
+
+	if (!completePendingTasks)
+		return;
+
+	// With every worker gone this is the only moment nothing is running, so a task that enqueues more work - onto
+	// ANY lane - cannot outrun the drain the way a per-lane worker drain could. Sweep all lanes repeatedly until a
+	// full pass comes up empty: tasks spawned mid-drain land in some lane and a subsequent pass collects them.
+	TaggedTask item;
+	for (bool drainedAny = true; drainedAny; )
+	{
+		drainedAny = false;
+		for (auto& q : _queues)
+		{
+			while (q.try_pop(item))
+			{
+				--_queuedCount.value;
+				drainedAny = true;
+				executeContainedTask(item);
+			}
+		}
+	}
+
+	assert_r(_queuedCount.value == 0); // Everything drained, so any nonzero count means a pop/removal path missed its decrement
 }
 
 void CWorkerThreadPool::retire(uint64_t tag)
@@ -224,6 +218,28 @@ void CWorkerThreadPool::completeTaggedTask(TaskTagState* tagState)
 	assert_debug_only(tagState->outstandingTaskCount > 0);
 	if (--tagState->outstandingTaskCount == 0)
 		_tagStateChanged.notify_all();
+}
+
+void CWorkerThreadPool::executeContainedTask(TaggedTask& item)
+{
+	if (taggedTaskCanRun(item.tagState))
+	{
+		// A throw must not escape to unwind the caller. A future-wrapped task that throws leaves its promise
+		// unfulfilled, so the waiter gets std::future_error (broken_promise) rather than the task's exception.
+		try
+		{
+			item.task();
+		}
+		catch (const std::exception& e)
+		{
+			assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+		}
+		catch (...)
+		{
+			assert_unconditional_r("Unknown exception in a worker task");
+		}
+	}
+	completeTaggedTask(item.tagState);
 }
 
 void CWorkerThreadPool::waitUntilStarted() noexcept

@@ -59,7 +59,7 @@ class CWorkerThreadPool
 
 		[[nodiscard]] bool isStarted() const noexcept;
 
-		void stop(bool finishPendingTasks = false);
+		void stop();
 
 	private:
 		void threadFunc() noexcept;
@@ -72,7 +72,6 @@ class CWorkerThreadPool
 		const std::string _threadName;
 		std::atomic<bool> _working {false};
 		std::atomic<bool> _terminate {false};
-		std::atomic<bool> _finishPendingTasks {false};
 		// Must be the last member: its initialization starts the thread, which reads the members above -
 		// they have to be initialized by then
 		std::thread _thread;
@@ -85,7 +84,9 @@ public:
 	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
 	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
 
-	void finishAllThreads(bool completePendingTasks = false); // Does the same thing the destructor does, but can be called when needed
+	// Stops and joins all workers. completePendingTasks == true first drains every queued task to completion,
+	// including ones spawned during the drain; false abandons the backlog, as the destructor does.
+	void finishAllThreads(bool completePendingTasks = false);
 
 	// Removes this tag's queued tasks and waits out any popped/running task, so that once it returns no task with this tag
 	// is running or queued. The owner must stop submitting before calling this from its destructor.
@@ -158,15 +159,15 @@ public:
 	// completed. The calling thread participates on equal footing and can complete the entire range alone,
 	// which makes the call safe (deadlock-free) even from inside a pool task on a saturated pool. The caller
 	// does not process unrelated pool tasks while waiting for the last in-flight fn to return.
-	// fn is invoked concurrently and must not throw: the workers' exception containment would swallow the
-	// throw and the completion count would never be reached, leaving the caller waiting forever.
+	// fn is invoked concurrently. A throw from fn is contained and logged so it cannot strand the batch (the
+	// completion count still advances), but that index's work is then left incomplete - fn should handle its own errors.
 	template <typename Fn>
 	void parallelFor(size_t count, Fn&& fn);
 
 	// The non-blocking parallelFor: returns as soon as the batch is dispatched; onAllCompleted then runs
 	// exactly once, on the worker that completes the last index - never on the calling thread (count == 0
 	// also dispatches to a worker). If the pool is destroyed before any worker picks the batch up, neither
-	// fn nor onAllCompleted runs. Like fn, onAllCompleted must not throw.
+	// fn nor onAllCompleted runs. fn's exceptions are contained as in parallelFor; onAllCompleted must not throw.
 	template <typename Fn, typename OnAllCompleted>
 	void parallelForAsync(size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted);
 
@@ -181,6 +182,9 @@ public:
 private:
 	[[nodiscard]] bool taggedTaskCanRun(const TaskTagState* tagState);
 	void completeTaggedTask(TaskTagState* tagState);
+	// Executes one popped task with exception containment (a throw must not escape and unwind the caller), then
+	// accounts it. Used by the shutdown drain; the hot worker loop inlines its own copy (see threadFunc).
+	void executeContainedTask(TaggedTask& item);
 
 	// Members are laid out by access pattern: read-only-after-ctor members first (can share cache lines freely),
 	// then the idle-wait group (only written when workers park/unpark, quiet while the pool is saturated),
@@ -238,6 +242,8 @@ struct ParallelBatchState
 	{}
 
 	// Executes indices from the shared dispenser until they run out; the last completed index runs onAllCompleted.
+	// fn is contained: a throw must not abort the drain and leave completedCount short of count, which would strand
+	// onAllCompleted (and any parallelFor caller blocked on it). onAllCompleted itself is expected not to throw.
 	void drainIndices()
 	{
 		for (;;)
@@ -245,7 +251,18 @@ struct ParallelBatchState
 			const size_t index = nextIndex.fetch_add(1);
 			if (index >= count)
 				return;
-			fn(index);
+			try
+			{
+				fn(index);
+			}
+			catch (const std::exception& e)
+			{
+				assert_unconditional_r(std::string{ "Exception in a parallelFor task: " } + e.what());
+			}
+			catch (...)
+			{
+				assert_unconditional_r("Unknown exception in a parallelFor task");
+			}
 			if (completedCount.fetch_add(1) + 1 == count)
 				onAllCompleted();
 		}
