@@ -49,6 +49,7 @@ LIBS += \
 	-lcpputils
 
 SOURCES += \
+	cinterruptablethread_tests.cpp \
 	execution_queue_tests.cpp \
 	main.cpp \
 	thread_pool_tests.cpp
