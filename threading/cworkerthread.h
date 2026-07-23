@@ -16,12 +16,12 @@ RESTORE_COMPILER_WARNINGS
 #include <condition_variable>
 #include <deque>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 
 STORE_COMPILER_WARNINGS
@@ -103,10 +103,7 @@ public:
 		if (tag != 0)
 		{
 			std::lock_guard lock(_tagStateMutex);
-			auto tagStateIt = _tagStates.find(tag);
-			if (tagStateIt == _tagStates.end())
-				tagStateIt = _tagStates.emplace(tag, std::make_unique<TaskTagState>()).first;
-			tagState = tagStateIt->second.get();
+			tagState = &_tagStates.try_emplace(tag).first->second;
 
 			assert_debug_only(!tagState->retired); // Enqueuing after the owner has begun retiring is a lifetime bug
 			if (tagState->retired)
@@ -220,7 +217,8 @@ private:
 	// boundaries; task execution never holds the mutex, so retiring one tag cannot wait on unrelated work.
 	std::mutex _tagStateMutex;
 	std::condition_variable _tagStateChanged;
-	std::unordered_map<uint64_t, std::unique_ptr<TaskTagState>> _tagStates;
+	// Queued tasks hold a raw TaskTagState* into this map, so it must be node-based: an element's address has to survive the insertion of other tags.
+	std::map<uint64_t, TaskTagState> _tagStates;
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
 	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
 };

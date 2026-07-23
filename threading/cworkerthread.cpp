@@ -178,7 +178,7 @@ void CWorkerThreadPool::retire(uint64_t tag)
 		if (it == _tagStates.end())
 			return;
 
-		tagState = it->second.get();
+		tagState = &it->second;
 		assert_debug_only(!tagState->retired);
 		tagState->retired = true;
 	}
@@ -196,7 +196,7 @@ void CWorkerThreadPool::retire(uint64_t tag)
 	_tagStateChanged.wait(lock, [tagState] { return tagState->outstandingTaskCount == 0; });
 
 	const auto it = _tagStates.find(tag);
-	if (it != _tagStates.end() && it->second.get() == tagState)
+	if (it != _tagStates.end() && &it->second == tagState)
 		_tagStates.erase(it);
 }
 
