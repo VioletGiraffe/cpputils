@@ -20,8 +20,8 @@ class CExecutionQueue
 {
 	static constexpr int untagged = -1;
 
-	// Fits a this pointer and three 64-bit values without allocating on 64-bit platforms.
-	using Task = fu2::function_base<true, false, fu2::capacity_fixed<32>, true, false, void()>;
+	// Fits a this pointer and 7 64-bit values without allocating on 64-bit platforms.
+	using Task = fu2::function_base<true, false, fu2::capacity_fixed<64>, true, false, void()>;
 
 	struct QueuedTask
 	{
