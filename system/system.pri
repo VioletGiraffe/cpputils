@@ -7,7 +7,6 @@ HEADERS += \
 	$$PWD/storagespeed.hpp
 
 SOURCES += \
-	$$PWD/ctimeelapsed.cpp \
 	$$PWD/processfilepath.cpp \
 	$$PWD/consoleapplicationexithandler.cpp \
 	$$PWD/timing.cpp \

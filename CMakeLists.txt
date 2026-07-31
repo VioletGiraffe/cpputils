@@ -45,7 +45,6 @@ endforeach()
 endif()
 
 target_sources(${TARGET_NAME} PRIVATE
-		system/ctimeelapsed.cpp
 		system/processfilepath.cpp
 		system/consoleapplicationexithandler.cpp
 		system/timing.cpp
