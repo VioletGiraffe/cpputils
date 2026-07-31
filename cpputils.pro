@@ -45,6 +45,7 @@ include (assert/assert.pri)
 include (lang/lang.pri)
 include (hash/hash.pri)
 include (utility_functions/utility_functions.pri)
+include (timing/timing.pri)
 
 win32*:!*msvc2012:*msvc* {
 	QMAKE_CXXFLAGS += /FS

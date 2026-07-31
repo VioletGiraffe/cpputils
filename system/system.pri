@@ -1,5 +1,4 @@
 HEADERS += \
-	$$PWD/ctimeelapsed.h \
 	$$PWD/processfilepath.hpp \
 	$$PWD/consoleapplicationexithandler.h \
 	$$PWD/timing.h \

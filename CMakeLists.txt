@@ -45,6 +45,7 @@ endforeach()
 endif()
 
 target_sources(${TARGET_NAME} PRIVATE
+		timing/profiler.cpp
 		system/processfilepath.cpp
 		system/consoleapplicationexithandler.cpp
 		system/timing.cpp
