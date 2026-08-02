@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <concepts>
+#include <exception>
 #include <string>
 #include <thread>
 #include <utility>
@@ -31,7 +32,20 @@ public:
 
 		_thread = std::thread([this, payload{ std::forward<Payload>(payload) }]() mutable {
 			setThreadName(_threadName.c_str());
-			payload(_cancellationRequested);
+			// Contained so a throw is logged and survivable instead of terminating the process. This cannot stand in
+			// for the payload's own completion: whatever its owner waits for, the payload must publish itself.
+			try
+			{
+				payload(_cancellationRequested);
+			}
+			catch (const std::exception& e)
+			{
+				assert_unconditional_r("Exception in thread " + _threadName + ": " + e.what());
+			}
+			catch (...)
+			{
+				assert_unconditional_r("Unknown exception in thread " + _threadName);
+			}
 		});
 	}
 
