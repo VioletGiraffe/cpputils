@@ -1,28 +1,174 @@
 #include "storagespeed.hpp"
 
+#include <algorithm>
+#include <mutex>
+#include <utility>
+#include <vector>
+
 #ifdef _WIN32
 
 #include <Windows.h>
 #include <winioctl.h>
 
+#include <cwchar>
 #include <iterator>
 #include <string>
+#include <string_view>
 
-using VolumeKey = std::wstring;
+struct VolumeKey
+{
+	std::wstring guidPath;
+	std::wstring mountPath;
 
-static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
+	bool operator==(const VolumeKey& other) const
+	{
+		if (guidPath.empty() != other.guidPath.empty())
+			return false;
+
+		return guidPath.empty() ? mountPath == other.mountPath : guidPath == other.guidPath;
+	}
+};
+
+struct VolumeMount
+{
+	std::wstring path;
+	std::wstring guidPath;
+};
+
+static std::wstring normalizedWindowsPath(std::wstring path)
+{
+	std::replace(path.begin(), path.end(), L'/', L'\\');
+	return path;
+}
+
+static bool equalIgnoringCase(const std::wstring_view left, const std::wstring_view right)
+{
+	return left.size() == right.size()
+		&& CompareStringOrdinal(left.data(), static_cast<int>(left.size()), right.data(), static_cast<int>(right.size()), TRUE) == CSTR_EQUAL;
+}
+
+static bool hasPathPrefix(const std::wstring_view path, const std::wstring_view prefix)
+{
+	return path.size() >= prefix.size()
+		&& CompareStringOrdinal(path.data(), static_cast<int>(prefix.size()), prefix.data(), static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL;
+}
+
+static std::vector<VolumeMount> enumerateVolumeMounts()
+{
+	std::vector<VolumeMount> mounts;
+	wchar_t volumeGuidPath[MAX_PATH + 1];
+	const HANDLE volumeSearch = FindFirstVolumeW(volumeGuidPath, static_cast<DWORD>(std::size(volumeGuidPath)));
+	if (volumeSearch == INVALID_HANDLE_VALUE)
+		return mounts;
+
+	do
+	{
+		std::vector<wchar_t> pathNames(MAX_PATH + 1);
+		DWORD requiredLength = 0;
+		if (!GetVolumePathNamesForVolumeNameW(volumeGuidPath, pathNames.data(), static_cast<DWORD>(pathNames.size()), &requiredLength))
+		{
+			if (GetLastError() != ERROR_MORE_DATA)
+				continue;
+
+			pathNames.resize(requiredLength);
+			if (!GetVolumePathNamesForVolumeNameW(volumeGuidPath, pathNames.data(), static_cast<DWORD>(pathNames.size()), &requiredLength))
+				continue;
+		}
+
+		for (const wchar_t* pathName = pathNames.data(); *pathName; pathName += std::wcslen(pathName) + 1)
+			mounts.push_back({ normalizedWindowsPath(pathName), volumeGuidPath });
+	}
+	while (FindNextVolumeW(volumeSearch, volumeGuidPath, static_cast<DWORD>(std::size(volumeGuidPath))));
+
+	FindVolumeClose(volumeSearch);
+	std::sort(mounts.begin(), mounts.end(), [](const VolumeMount& left, const VolumeMount& right) { return left.path.size() > right.path.size(); });
+	return mounts;
+}
+
+struct VolumeMountTable
+{
+	std::mutex mutex;
+	std::vector<VolumeMount> mounts = enumerateVolumeMounts();
+};
+
+static VolumeMountTable& volumeMountTable()
+{
+	static VolumeMountTable table;
+	return table;
+}
+
+static void assignVolumeKey(VolumeKey& key, const std::wstring& mountPath, const std::wstring& guidPath)
+{
+	key.mountPath = mountPath;
+	key.guidPath = guidPath;
+}
+
+static bool volumeKeyFromMountTable(const std::filesystem::path& path, VolumeKey& key)
+{
+	const std::wstring normalizedPath = normalizedWindowsPath(path.native());
+	VolumeMountTable& table = volumeMountTable();
+	std::lock_guard lock{ table.mutex };
+
+	for (int attempt = 0; attempt != 2; ++attempt)
+	{
+		const auto mount = std::find_if(table.mounts.cbegin(), table.mounts.cend(), [&normalizedPath](const VolumeMount& candidate) {
+			return hasPathPrefix(normalizedPath, candidate.path);
+		});
+		if (mount == table.mounts.cend())
+			return false;
+
+		// Drive letters are routinely reused for different removable volumes, so validate the snapshot on every hit.
+		wchar_t currentVolumeGuidPath[64]; // "\\?\Volume{GUID}\" is 49 chars
+		const BOOL foundVolumeGuid = GetVolumeNameForVolumeMountPointW(
+			mount->path.c_str(), currentVolumeGuidPath, static_cast<DWORD>(std::size(currentVolumeGuidPath)));
+		if (foundVolumeGuid && equalIgnoringCase(mount->guidPath, currentVolumeGuidPath))
+		{
+			assignVolumeKey(key, mount->path, mount->guidPath);
+			return true;
+		}
+
+		if (attempt != 0)
+			return false;
+
+		table.mounts = enumerateVolumeMounts();
+	}
+
+	return false;
+}
+
+static bool volumeKeyFromSystem(const std::filesystem::path& path, VolumeKey& key)
 {
 	wchar_t volumeRoot[MAX_PATH + 1];
 	if (!GetVolumePathNameW(path.c_str(), volumeRoot, static_cast<DWORD>(std::size(volumeRoot))))
 		return false;
 
-	key = volumeRoot;
+	wchar_t volumeGuidPath[64]; // "\\?\Volume{GUID}\" is 49 chars
+	const BOOL foundVolumeGuid = GetVolumeNameForVolumeMountPointW(volumeRoot, volumeGuidPath, static_cast<DWORD>(std::size(volumeGuidPath)));
+	assignVolumeKey(key, volumeRoot, foundVolumeGuid ? volumeGuidPath : L"");
 	return true;
 }
 
-static StorageSpeed queryVolumeSpeed(const VolumeKey& volumeRoot)
+static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
 {
-	switch (GetDriveTypeW(volumeRoot.c_str()))
+	if (volumeKeyFromMountTable(path, key))
+		return true;
+
+	if (!volumeKeyFromSystem(path, key))
+		return false;
+
+	if (!key.guidPath.empty())
+	{
+		// The first lookup for a newly attached volume used the system fallback; refresh the table for subsequent paths.
+		VolumeMountTable& table = volumeMountTable();
+		std::lock_guard lock{ table.mutex };
+		table.mounts = enumerateVolumeMounts();
+	}
+	return true;
+}
+
+static StorageSpeed queryVolumeSpeed(const VolumeKey& volume)
+{
+	switch (GetDriveTypeW(volume.mountPath.c_str()))
 	{
 	case DRIVE_RAMDISK:
 		return StorageSpeed::FastRandomAccess;
@@ -31,20 +177,17 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey& volumeRoot)
 	default: // Remote, removable, CD-ROM, unknown
 		return StorageSpeed::SlowOrUnknown;
 	}
-
-	// The volume GUID path handles volumes mounted in a folder as well as under a drive letter
-	wchar_t volumeGuidPath[64]; // "\\?\Volume{GUID}\" is 49 chars
-	if (!GetVolumeNameForVolumeMountPointW(volumeRoot.c_str(), volumeGuidPath, static_cast<DWORD>(std::size(volumeGuidPath))))
+	if (volume.guidPath.empty())
 		return StorageSpeed::SlowOrUnknown;
 
 	// CreateFile wants the volume path without the trailing backslash
-	std::wstring volumeDevicePath = volumeGuidPath;
+	std::wstring volumeDevicePath = volume.guidPath;
 	if (!volumeDevicePath.empty() && volumeDevicePath.back() == L'\\')
 		volumeDevicePath.pop_back();
 
 	// Zero access mode: device metadata queries need no read/write access and thus no admin rights
-	const HANDLE volume = CreateFileW(volumeDevicePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-	if (volume == INVALID_HANDLE_VALUE)
+	const HANDLE volumeHandle = CreateFileW(volumeDevicePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+	if (volumeHandle == INVALID_HANDLE_VALUE)
 		return StorageSpeed::SlowOrUnknown;
 
 	StorageSpeed result = StorageSpeed::SlowOrUnknown;
@@ -52,20 +195,20 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey& volumeRoot)
 	STORAGE_PROPERTY_QUERY query{ .PropertyId = StorageDeviceSeekPenaltyProperty, .QueryType = PropertyStandardQuery, .AdditionalParameters = {} };
 
 	DEVICE_SEEK_PENALTY_DESCRIPTOR seekPenalty{};
-	if (DeviceIoControl(volume, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &seekPenalty, sizeof(seekPenalty), &bytesReturned, nullptr)
+	if (DeviceIoControl(volumeHandle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &seekPenalty, sizeof(seekPenalty), &bytesReturned, nullptr)
 		&& !seekPenalty.IncursSeekPenalty)
 	{
 		// Claims to be an SSD; but USB bridges often misreport the seek penalty, and external disks want bounded IO regardless of medium
 		query.PropertyId = StorageDeviceProperty;
 		STORAGE_DEVICE_DESCRIPTOR deviceDescriptor{}; // Variable-size struct, but BusType fits in the fixed part
-		if (DeviceIoControl(volume, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &deviceDescriptor, sizeof(deviceDescriptor), &bytesReturned, nullptr)
+		if (DeviceIoControl(volumeHandle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &deviceDescriptor, sizeof(deviceDescriptor), &bytesReturned, nullptr)
 			&& deviceDescriptor.BusType != BusTypeUsb)
 		{
 			result = StorageSpeed::FastRandomAccess;
 		}
 	}
 
-	CloseHandle(volume);
+	CloseHandle(volumeHandle);
 	return result;
 }
 
@@ -195,11 +338,6 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey& deviceName)
 #endif
 
 #if defined _WIN32 || defined __linux__ || defined __APPLE__
-
-#include <algorithm>
-#include <mutex>
-#include <utility>
-#include <vector>
 
 StorageSpeed storageSpeedForPath(const std::filesystem::path& path)
 {
