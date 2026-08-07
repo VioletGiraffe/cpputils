@@ -1,7 +1,7 @@
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 #include "3rdparty/catch2/catch.hpp"
 
-//#include "threading/cworkerthread.h"
+//#include "threading/cthreadpool.h"
 //#include "threading/thread_helpers.h"
 //
 //int main()
@@ -9,7 +9,7 @@
 //	setThreadName("Main");
 //	static constexpr int N = 100000;
 //
-//	CWorkerThreadPool pool(1, "Test thread pool");
+//	CThreadPool pool(1, "Test thread pool");
 //	pool.waitUntilStarted();
 //
 //	int a = 0;

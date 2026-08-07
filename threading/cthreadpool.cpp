@@ -1,29 +1,58 @@
-#include "cworkerthread.h"
+#include "cthreadpool.h"
 #include "thread_helpers.h"
 #include "assert/advanced_assert.h"
 
 #include <sstream>
 #include <utility>
 
-CWorkerThreadPool::CWorkerThread::CWorkerThread(CWorkerThreadPool& pool, size_t queueIndex, std::string threadName) :
+class CPoolThread
+{
+public:
+	CPoolThread(CThreadPool& pool, size_t queueIndex, std::string threadName);
+	~CPoolThread();
+
+	CPoolThread(const CPoolThread&) = delete;
+	CPoolThread& operator=(const CPoolThread&) = delete;
+
+	[[nodiscard]] bool isStarted() const noexcept;
+
+	void stop();
+
+private:
+	void threadFunc() noexcept;
+	// Pops a task: own queue first, then steals from the others.
+	bool tryGetTask(TaggedTask& task);
+
+private:
+	CThreadPool& _pool;
+	const size_t _queueIndex; // this worker's own queue in _pool._queues
+	const std::string _threadName;
+	std::atomic<bool> _working {false};
+	std::atomic<bool> _terminate {false};
+	// Must be the last member: its initialization starts the thread, which reads the members above -
+	// they have to be initialized by then
+	std::thread _thread;
+};
+
+CPoolThread::CPoolThread(CThreadPool& pool, size_t queueIndex, std::string threadName) :
 	_pool(pool),
 	_queueIndex(queueIndex),
 	_threadName(std::move(threadName)),
-	_thread{ &CWorkerThread::threadFunc, this }
+	_thread{ &CPoolThread::threadFunc, this }
 {
 }
 
-CWorkerThreadPool::CWorkerThread::~CWorkerThread()
+CPoolThread::~CPoolThread()
 {
 	stop();
 }
 
-bool CWorkerThreadPool::CWorkerThread::isStarted() const noexcept
+bool CPoolThread::isStarted() const noexcept
 {
 	return _working;
 }
 
-void CWorkerThreadPool::CWorkerThread::stop()
+void CPoolThread::stop()
 {
 	_terminate = true;
 
@@ -42,7 +71,7 @@ void CWorkerThreadPool::CWorkerThread::stop()
 	_working = false;
 }
 
-void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
+void CPoolThread::threadFunc() noexcept
 {
 	_working = true;
 
@@ -95,7 +124,7 @@ void CWorkerThreadPool::CWorkerThread::threadFunc() noexcept
 	_working = false;
 }
 
-bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
+bool CPoolThread::tryGetTask(TaggedTask& task)
 {
 	if (_pool._queues[_queueIndex].try_pop(task))
 	{
@@ -121,7 +150,7 @@ bool CWorkerThreadPool::CWorkerThread::tryGetTask(TaggedTask& task)
 	return false;
 }
 
-CWorkerThreadPool::CWorkerThreadPool(uint32_t numThreads, std::string poolName) :
+CThreadPool::CThreadPool(uint32_t numThreads, std::string poolName) :
 	_poolName(std::move(poolName)),
 	_maxNumThreads(numThreads),
 	_laneSelectorMod(numThreads)
@@ -135,7 +164,9 @@ CWorkerThreadPool::CWorkerThreadPool(uint32_t numThreads, std::string poolName) 
 	}
 }
 
-void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
+CThreadPool::~CThreadPool() noexcept = default;
+
+void CThreadPool::finishAllThreads(bool completePendingTasks)
 {
 	for (auto& th : _workerThreads)
 		th.stop(); // Terminate and join; any queued tasks are left in place for the drain below
@@ -167,7 +198,7 @@ void CWorkerThreadPool::finishAllThreads(bool completePendingTasks)
 	assert_r(_queuedCount.value == 0); // Everything drained, so any nonzero count means a pop/removal path missed its decrement
 }
 
-void CWorkerThreadPool::retire(uint64_t tag)
+void CThreadPool::retire(uint64_t tag)
 {
 	assert_debug_only(tag != 0); // Tag 0 is the "untagged" sentinel and must never be retired (it would wipe unrelated tasks)
 
@@ -200,7 +231,7 @@ void CWorkerThreadPool::retire(uint64_t tag)
 		_tagStates.erase(it);
 }
 
-bool CWorkerThreadPool::taggedTaskCanRun(const TaskTagState* tagState)
+bool CThreadPool::taggedTaskCanRun(const TaskTagState* tagState)
 {
 	if (!tagState)
 		return true;
@@ -209,7 +240,7 @@ bool CWorkerThreadPool::taggedTaskCanRun(const TaskTagState* tagState)
 	return !tagState->retired;
 }
 
-void CWorkerThreadPool::completeTaggedTask(TaskTagState* tagState)
+void CThreadPool::completeTaggedTask(TaskTagState* tagState)
 {
 	if (!tagState)
 		return;
@@ -220,7 +251,7 @@ void CWorkerThreadPool::completeTaggedTask(TaskTagState* tagState)
 		_tagStateChanged.notify_all();
 }
 
-void CWorkerThreadPool::executeContainedTask(TaggedTask& item)
+void CThreadPool::executeContainedTask(TaggedTask& item)
 {
 	if (taggedTaskCanRun(item.tagState))
 	{
@@ -242,7 +273,7 @@ void CWorkerThreadPool::executeContainedTask(TaggedTask& item)
 	completeTaggedTask(item.tagState);
 }
 
-void CWorkerThreadPool::waitUntilStarted() noexcept
+void CThreadPool::waitUntilStarted() noexcept
 {
 	for (auto& th : _workerThreads)
 	{
@@ -253,12 +284,12 @@ void CWorkerThreadPool::waitUntilStarted() noexcept
 	}
 }
 
-size_t CWorkerThreadPool::maxWorkersCount() const
+size_t CThreadPool::maxWorkersCount() const
 {
 	return _maxNumThreads;
 }
 
-size_t CWorkerThreadPool::queueLength() const
+size_t CThreadPool::queueLength() const
 {
 	return _queuedCount.value;
 }

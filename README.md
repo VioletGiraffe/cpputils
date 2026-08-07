@@ -102,9 +102,9 @@ A thread-safe queue for `std::function` items (e. g. executable code). The main 
 
 A general purpose (template item type) thread-safe queue with the main purpose of easily organizing pipelines by connecting multiple worker threads in series. `CConsumerBlockingQueue::pop()` blocks until an item is available (uses condition variable). Non-blocking `try_pop` method is also available.
 
-### CWorkerThread / CWorkerThreadPool
+### CThreadPool
 
-The `CWorkerThread` class is a worker thread that receives its work load from a `CConsumerBlockingQueue`. The `CWorkerThread` is not available directly, but only as a `CWorkerThreadPool` class of one or more threads over per-thread task queues with work stealing - optimal for any kinds of tasks, small and large. Besides fire-and-forget `enqueue()` (optionally tagged, so an owner can `retire()` its pending tasks) and `enqueueWithFuture()`, `parallelFor(count, fn)` runs an index range across the workers plus the calling thread and returns when every index has completed; the caller participates in the work, which makes nested `parallelFor` calls from inside pool tasks deadlock-free. `parallelForAsync(count, fn, onAllCompleted)` is its non-blocking sibling: it returns as soon as the batch is dispatched, and `onAllCompleted` runs once on the worker that completes the last index.
+`CThreadPool` manages one or more internal `CPoolThread` workers over per-thread task queues with work stealing, making it suitable for both small and large tasks. Besides fire-and-forget `enqueue()` (optionally tagged, so an owner can `retire()` its pending tasks) and `enqueueWithFuture()`, `parallelFor(count, fn)` runs an index range across the workers plus the calling thread and returns when every index has completed; the caller participates in the work, which makes nested `parallelFor` calls from inside pool tasks deadlock-free. `parallelForAsync(count, fn, onAllCompleted)` is its non-blocking sibling: it returns as soon as the batch is dispatched, and `onAllCompleted` runs once on the worker that completes the last index.
 
 ### CPeriodicExecutionThread
 

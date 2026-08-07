@@ -41,48 +41,23 @@ struct TaggedTask {
 	TaskType task;
 };
 
+class CPoolThread;
+
 // A pool of worker threads over per-thread task queues: enqueue() hash-picks a queue (no shared point of
 // contention between busy workers), and a worker that finds its own queue empty steals from the others,
 // so one busy queue cannot hold tasks hostage while other workers idle.
 // Idle workers all park on ONE shared condvar: since any of them can take any task, a producer wakes a
 // stealer with a single unrouted notify - no tracking of who sleeps where.
-class CWorkerThreadPool
+class CThreadPool
 {
-	class CWorkerThread
-	{
-	public:
-		CWorkerThread(CWorkerThreadPool& pool, size_t queueIndex, std::string threadName);
-		~CWorkerThread();
-
-		CWorkerThread(const CWorkerThread&) = delete;
-		CWorkerThread& operator=(const CWorkerThread&) = delete;
-
-		[[nodiscard]] bool isStarted() const noexcept;
-
-		void stop();
-
-	private:
-		void threadFunc() noexcept;
-		// Pops a task: own queue first, then steals from the others.
-		bool tryGetTask(TaggedTask& task);
-
-	private:
-		CWorkerThreadPool& _pool;
-		const size_t _queueIndex; // this worker's own queue in _pool._queues
-		const std::string _threadName;
-		std::atomic<bool> _working {false};
-		std::atomic<bool> _terminate {false};
-		// Must be the last member: its initialization starts the thread, which reads the members above -
-		// they have to be initialized by then
-		std::thread _thread;
-	};
+	friend class CPoolThread;
 
 public:
-	CWorkerThreadPool(uint32_t maxNumThreads, std::string poolName);
-	~CWorkerThreadPool() noexcept = default;
+	CThreadPool(uint32_t maxNumThreads, std::string poolName);
+	~CThreadPool() noexcept;
 
-	CWorkerThreadPool(const CWorkerThreadPool&) = delete;
-	CWorkerThreadPool& operator=(const CWorkerThreadPool&) = delete;
+	CThreadPool(const CThreadPool&) = delete;
+	CThreadPool& operator=(const CThreadPool&) = delete;
 
 	// Stops and joins all workers. completePendingTasks == true first drains every queued task to completion,
 	// including ones spawned during the drain; false abandons the backlog, as the destructor does.
@@ -220,7 +195,7 @@ private:
 	// Queued tasks hold a raw TaskTagState* into this map, so it must be node-based: an element's address has to survive the insertion of other tags.
 	std::map<uint64_t, TaskTagState> _tagStates;
 	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
-	std::deque<CWorkerThread> _workerThreads; // Cannot be std::vector because CWorkerThread cannot be made movable (let alone copyable)
+	std::deque<CPoolThread> _workerThreads; // Cannot be std::vector because CPoolThread cannot be made movable (let alone copyable)
 };
 
 RESTORE_COMPILER_WARNINGS
@@ -282,7 +257,7 @@ template <typename Fn, typename OnAllCompleted>
 } // namespace detail
 
 template <typename Fn>
-void CWorkerThreadPool::parallelFor(const size_t count, Fn&& fn)
+void CThreadPool::parallelFor(const size_t count, Fn&& fn)
 {
 	if (count == 0)
 		return;
@@ -319,7 +294,7 @@ void CWorkerThreadPool::parallelFor(const size_t count, Fn&& fn)
 }
 
 template <typename Fn, typename OnAllCompleted>
-void CWorkerThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
+void CThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompleted&& onAllCompleted)
 {
 	if (count == 0)
 	{

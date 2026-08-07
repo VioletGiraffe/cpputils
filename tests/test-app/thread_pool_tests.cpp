@@ -1,7 +1,7 @@
 #include "3rdparty/catch2/catch.hpp"
 
 #include "utility/macro_utils.h"
-#include "threading/cworkerthread.h"
+#include "threading/cthreadpool.h"
 
 #include <array>
 #include <future>
@@ -13,11 +13,11 @@ TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
 try {
 	SECTION("Single thread") {
-		CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	}
 
 	SECTION("Many threads") {
-		CWorkerThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		CThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	}
 }
 catch(...) {
@@ -33,7 +33,7 @@ TEST_CASE("Basic functionality", "[threadpool]")
 	SECTION("Single thread") {
 		{
 			int a = 0;
-			CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+			CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 			pool.enqueue([&a] {++a;});
 			while (pool.queueLength() > 0);
 			pool.finishAllThreads();
@@ -42,7 +42,7 @@ TEST_CASE("Basic functionality", "[threadpool]")
 
 		{
 			std::atomic_int a = 0;
-			CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+			CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 			for (int i = 0; i < 100; ++i)
 				pool.enqueue([&a] {++a;});
 
@@ -55,7 +55,7 @@ TEST_CASE("Basic functionality", "[threadpool]")
 	SECTION("Many threads") {
 		{
 			int a = 0;
-			CWorkerThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+			CThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 			pool.enqueue([&a] {++a; });
 			while (pool.queueLength() > 0);
 			pool.finishAllThreads();
@@ -64,7 +64,7 @@ TEST_CASE("Basic functionality", "[threadpool]")
 
 		{
 			std::atomic_int a = 0;
-			CWorkerThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+			CThreadPool pool(std::thread::hardware_concurrency() * 3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 			static constexpr size_t N = 500;
 			for (size_t i = 0; i < N; ++i)
 				pool.enqueue([&a] {++a; });
@@ -91,7 +91,7 @@ struct BenchWorkload
 
 // Not just the queueLength() spin: queueLength() == 0 does not cover popped-but-still-executing tasks,
 // and a straggler's increment landing after the next sample's reset() would corrupt that sample's count.
-static void waitForCompletion(CWorkerThreadPool& pool, const BenchWorkload& workload, const size_t expectedTotal)
+static void waitForCompletion(CThreadPool& pool, const BenchWorkload& workload, const size_t expectedTotal)
 {
 	// Yield: queueLength() is a single atomic load, and a full-speed spin on it would keep stealing the
 	// cache line every worker must update per pop (and hog a core the oversubscribed benches need)
@@ -131,7 +131,7 @@ static void bench(const uint32_t nThreads)
 {
 	BenchWorkload workload;
 
-	CWorkerThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(nThreads, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t N = 100'000;
@@ -162,7 +162,7 @@ TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing]
 	// 8 tasks on 8 lanes collide (some lane gets two or more) in ~99.8% of rounds; each collided task must get
 	// a helper woken for it, so that every round takes ~100 ms regardless of placement. Sleep-based, so core
 	// count does not matter.
-	CWorkerThreadPool pool(8, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(8, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	// Diagnostics for failures: when and on which worker each task ran. One writer per slot, synchronized by
@@ -205,7 +205,7 @@ TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpo
 	// A long task occupies its lane's owner; of the 32 trivial tasks, ~8 hash onto that lane (all 32 missing it:
 	// ~0.01%); idle workers must take them over instead of letting them wait out the blocker.
 	std::atomic_bool blockerStarted{ false };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	pool.enqueue([&blockerStarted] {
@@ -230,7 +230,7 @@ TEST_CASE("Park/wake churn does not lose wakeups", "[threadpool]")
 	// Each round drains the pool to idle and then a single task must arrive through the idle-wake gate.
 	// 1000 rounds sample both worker states: parked in the condvar wait, and mid-transition around it.
 	// One lost wake stalls its round for the full 5000 ms idle timeout - unmissable against this budget.
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	const auto start = std::chrono::steady_clock::now();
@@ -246,7 +246,7 @@ TEST_CASE("Concurrent enqueue from multiple producer threads", "[threadpool]")
 	// enqueue() must be callable from any thread: the lane mutexes, _queuedCount and the idle-wake gate are
 	// the shared state under test. The final count proves no task was lost or duplicated.
 	std::atomic_int counter{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr int nProducers = 8;
@@ -268,7 +268,7 @@ TEST_CASE("Concurrent enqueue from multiple producer threads", "[threadpool]")
 }
 
 // Executes one node of a binary task tree: counts itself, spawns two children down to depth 0
-static void runFanOutTask(CWorkerThreadPool& pool, std::atomic_int& counter, int depth)
+static void runFanOutTask(CThreadPool& pool, std::atomic_int& counter, int depth)
 {
 	++counter;
 	if (depth > 0)
@@ -284,7 +284,7 @@ TEST_CASE("Tasks enqueueing further tasks", "[threadpool]")
 	// (enqueue takes no pool-wide lock, so enqueueing while the calling worker holds the shared pop+execute
 	// lock is safe - this pins that property).
 	std::atomic_int counter{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr int depth = 12;
@@ -299,7 +299,7 @@ TEST_CASE("Tasks enqueueing further tasks", "[threadpool]")
 
 TEST_CASE("parallelFor executes every index exactly once", "[threadpool][parallelfor]")
 {
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	for (const size_t count : { size_t{ 0 }, size_t{ 1 }, size_t{ 3 }, size_t{ 4 }, size_t{ 100 }, size_t{ 10'000 } })
@@ -318,7 +318,7 @@ TEST_CASE("parallelFor runs indices concurrently", "[threadpool][parallelfor]")
 {
 	// 8 sleeps over 7 workers + the calling thread: concurrent execution takes ~100 ms; any serialization
 	// shows up as a multiple of that. Sleep-based, so core count does not matter.
-	CWorkerThreadPool pool(7, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(7, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	const auto start = std::chrono::steady_clock::now();
@@ -332,7 +332,7 @@ TEST_CASE("parallelFor with every worker busy completes via the calling thread",
 	// drain the whole range alone, well before any worker frees up. This pins the caller-participation property
 	// that makes parallelFor deadlock-free on a saturated pool.
 	std::atomic_int blockersStarted{ 0 };
-	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	for (int i = 0; i < 2; ++i)
@@ -357,7 +357,7 @@ TEST_CASE("Nested parallelFor from inside pool tasks does not deadlock", "[threa
 	// More outer tasks than workers, and every outer task blocks inside a parallelFor of its own - no worker is
 	// ever free to help another's batch, so each nested call must complete through its calling (worker) thread.
 	std::atomic_int total{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	std::vector<std::future<void>> futures;
@@ -377,7 +377,7 @@ TEST_CASE("parallelFor contains a throwing fn and still completes", "[threadpool
 	// A throwing fn must not strand the batch: the throw is contained + logged (release-only, like the pool's task
 	// containment), the completion count still advances, and parallelFor returns instead of hanging. Every index's
 	// fn is entered exactly once - hits[i] is bumped before the throw - so a full count proves nothing was skipped.
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t count = 64;
@@ -396,7 +396,7 @@ TEST_CASE("parallelFor contains a throwing fn and still completes", "[threadpool
 
 TEST_CASE("parallelForAsync executes every index exactly once, then completes", "[threadpool][parallelforasync]")
 {
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	for (const size_t count : { size_t{ 0 }, size_t{ 1 }, size_t{ 3 }, size_t{ 4 }, size_t{ 100 }, size_t{ 10'000 } })
@@ -416,7 +416,7 @@ TEST_CASE("parallelForAsync executes every index exactly once, then completes", 
 
 TEST_CASE("parallelForAsync does not block the caller; onAllCompleted runs last, on a worker", "[threadpool][parallelforasync]")
 {
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	std::atomic_bool callerReturned{ false };
@@ -450,7 +450,7 @@ TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
 {
 	// Parked workers sit in a 5000 ms wait; stop() must wake them via the notify, not the timeout
 	// (guards the mutex-held wakeAllThreads and any future changes to the wait predicate).
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 	std::this_thread::sleep_for(std::chrono::milliseconds(50)); // let the workers reach the parked wait
 
@@ -469,7 +469,7 @@ TEST_CASE("Destruction with a busy worker and a queued backlog", "[threadpool]")
 	std::atomic_int backlogRun{ 0 };
 	std::chrono::steady_clock::time_point destructionStart;
 	{
-		CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 		pool.enqueue([&blockerStarted] {
 			blockerStarted = true;
 			std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -493,7 +493,7 @@ TEST_CASE("retire()", "[threadpool]")
 	{
 		std::atomic_bool blockerStarted{ false };
 		std::atomic_int taggedRun{ 0 }, untaggedRun{ 0 };
-		CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 
 		pool.enqueue([&blockerStarted] {
 			blockerStarted = true;
@@ -523,7 +523,7 @@ TEST_CASE("retire()", "[threadpool]")
 	SECTION("Waits out an in-flight task with the tag")
 	{
 		std::atomic_bool taskStarted{ false }, taskFinished{ false };
-		CWorkerThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+		CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 
 		static constexpr uint64_t tag = 42;
 		pool.enqueue([&taskStarted, &taskFinished] {
@@ -545,7 +545,7 @@ TEST_CASE("retire() on a busy multi-thread pool", "[threadpool]")
 	// contended, work-stealing backlog: no tagged task may run after retire() returns.
 	std::atomic_bool retired{ false };
 	std::atomic_int taggedRunAfterRetire{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr uint64_t tag = 13;
@@ -570,7 +570,7 @@ TEST_CASE("retire() on a busy multi-thread pool", "[threadpool]")
 
 TEST_CASE("retire() waits only for the matching tag", "[threadpool]")
 {
-	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	std::promise<void> releaseRetiredTask, releaseUnrelatedTask;
 	auto retiredTaskRelease = releaseRetiredTask.get_future().share();
 	auto unrelatedTaskRelease = releaseUnrelatedTask.get_future().share();
@@ -604,7 +604,7 @@ TEST_CASE("retire() waits only for the matching tag", "[threadpool]")
 TEST_CASE("finishAllThreads(true) completes the queued backlog", "[threadpool]")
 {
 	std::atomic_int counter{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	for (int i = 0; i < 200; ++i)
 		pool.enqueue([&counter] { ++counter; });
 
@@ -619,7 +619,7 @@ TEST_CASE("finishAllThreads(true) completes tasks spawned during the drain", "[t
 	// every node. Deliberately no waitUntilStarted(), so shutdown races the still-expanding tree. Needs >= 2 workers
 	// (a single-lane pool cannot orphan) and is timing-sensitive by nature, like the [stealing] tests.
 	std::atomic_int counter{ 0 };
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 
 	static constexpr int depth = 12;
 	static constexpr int expected = (1 << (depth + 1)) - 1; // node count of the full binary tree
@@ -631,13 +631,13 @@ TEST_CASE("finishAllThreads(true) completes tasks spawned during the drain", "[t
 
 TEST_CASE("maxWorkersCount reports the configured worker count", "[threadpool]")
 {
-	CWorkerThreadPool pool(3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(3, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	REQUIRE(pool.maxWorkersCount() == 3);
 }
 
 TEST_CASE("retire() of a tag that was never used is a prompt no-op", "[threadpool]")
 {
-	CWorkerThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr uint64_t usedTag = 5;
@@ -654,7 +654,7 @@ TEST_CASE("retire() of a tag that was never used is a prompt no-op", "[threadpoo
 
 TEST_CASE("A tag is reusable after it has been retired", "[threadpool]")
 {
-	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr uint64_t tag = 21;
@@ -676,8 +676,8 @@ TEST_CASE("enqueueWithFuture surfaces a throwing task as broken_promise", "[thre
 {
 	// The worker contains the task's exception (logged via assert_unconditional_r, which does not abort in a
 	// release build) and never fulfills the wrapper's promise, so the future observes broken_promise - the
-	// contract documented in cworkerthread.h. Meaningful in a release build; a debug build trips the assert.
-	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	// contract documented in cthreadpool.h. Meaningful in a release build; a debug build trips the assert.
+	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	auto future = pool.enqueueWithFuture([] { throw std::runtime_error("deliberate task failure"); });
@@ -700,7 +700,7 @@ TEST_CASE("enqueue under a tag whose retire() is in progress is dropped", "[thre
 	// enqueue(): the racing enqueue must drop the task and return 0 (a debug build trips assert_debug_only here
 	// instead). Each attempt carries its own flag, so attempts that lost the race - accepted before retired was
 	// set - cannot affect the assertion on the one attempt that was actually dropped.
-	CWorkerThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr uint64_t tag = 77;
@@ -779,7 +779,7 @@ TEST_CASE("Benchmark - multi-producer", "[threadpool][benchmark]")
 	::printf("Producers: %u, workers: %u\n", nProducers, nWorkers);
 
 	BenchWorkload workload;
-	CWorkerThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t N = 100'000; // Total across all producers - comparable to the single-producer nanotask benches
@@ -819,7 +819,7 @@ TEST_CASE("Benchmark - saturated pool", "[threadpool][benchmark]")
 	::printf("Workers: %u, task duration: ~%u us\n", nWorkers, taskDurationUs);
 
 	BenchWorkload workload;
-	CWorkerThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	static constexpr size_t N = 50'000;
@@ -844,7 +844,7 @@ TEST_CASE("Benchmark - parallelFor", "[threadpool][benchmark]")
 	::printf("Workers: %u, spin calibration: %u iterations/us\n", nWorkers, iterationsPerUs);
 
 	BenchWorkload workload;
-	CWorkerThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	// Nano-indices: the shared dispenser (the nextIndex/completedCount fetch_adds) IS the workload
@@ -876,7 +876,7 @@ TEST_CASE("Benchmark - task latency", "[threadpool][benchmark]")
 	// Latency, not throughput: one task in flight at a time on an otherwise idle pool. Every iteration pays the
 	// full wake path - notify, worker wakes from the condvar, pop, run, promise fulfilled, caller resumes. The
 	// interactive shape (a UI action posting one job) that the throughput benches hide entirely.
-	CWorkerThreadPool pool(std::max(2u, std::thread::hardware_concurrency() - 1), "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(std::max(2u, std::thread::hardware_concurrency() - 1), "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	BENCHMARK("1000 single-task round trips") {
@@ -901,7 +901,7 @@ TEST_CASE("Benchmark - work stealing", "[threadpool][benchmark]")
 		nWorkers, nRounds * heavyDurationUs / nWorkers / 1000, nRounds * heavyDurationUs / 1000);
 
 	BenchWorkload workload;
-	CWorkerThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
+	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
 	BENCHMARK("All heavy tasks on one lane") {
