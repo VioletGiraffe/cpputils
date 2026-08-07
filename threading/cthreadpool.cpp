@@ -156,11 +156,12 @@ CThreadPool::CThreadPool(uint32_t numThreads, std::string poolName) :
 	_laneSelectorMod(numThreads)
 {
 	_queues.resize(numThreads);
+	auto insertionPoint = _workerThreads.before_begin();
 	for (size_t i = 1; i <= numThreads; ++i)
 	{
 		std::ostringstream stream;
 		stream << _poolName << " worker thread #" << i;
-		_workerThreads.emplace_back(*this, i - 1, stream.str());
+		insertionPoint = _workerThreads.emplace_after(insertionPoint, *this, i - 1, stream.str());
 	}
 }
 
