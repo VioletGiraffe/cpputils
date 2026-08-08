@@ -54,6 +54,13 @@ public:
 		_queue.emplace_back(QueuedTask{ tag, std::move(code) });
 	}
 
+	// Call only after preventing new producers, otherwise what's left in the queue afterwards is arbitrary.
+	inline void clear()
+	{
+		std::lock_guard<std::mutex> locker(_queueMutex);
+		_queue.clear();
+	}
+
 	// Newly added work cannot extend an execAll() drain beyond the number of tasks pending at entry.
 	inline void exec(ExecutionMode mode = execAll)
 	{
