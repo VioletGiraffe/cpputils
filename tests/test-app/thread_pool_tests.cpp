@@ -2,12 +2,32 @@
 
 #include "utility/macro_utils.h"
 #include "threading/cthreadpool.h"
+#include "threading/thread_helpers.h"
 
 #include <array>
 #include <future>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+
+TEST_CASE("CpuCount test", "[threadpool]")
+{
+	const auto count = CpuCount::get();
+
+	std::cout << "Logical processors: " << count.logicalProcessorCount() << '\n';
+	std::cout << "Physical cores: " << count.physicalCoreCount() << '\n';
+	std::cout << "Performance cores: " << count.performanceCoreCount() << '\n';
+	std::cout << "Efficiency cores: " << count.efficiencyCoreCount() << '\n';
+	std::cout << std::flush;
+
+	REQUIRE(count.physicalCoreCount() > 0);
+	REQUIRE(count.logicalProcessorCount() > 0);
+	REQUIRE(count.performanceCoreCount() > 0);
+	REQUIRE(count.efficiencyCoreCount() > 0);
+	REQUIRE(count.efficiencyCoreCount() + count.performanceCoreCount() == count.physicalCoreCount());
+	REQUIRE(count.physicalCoreCount() >= count.logicalProcessorCount());
+}
 
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
 {
