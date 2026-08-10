@@ -25,7 +25,7 @@ TEST_CASE("CpuCount test", "[threadpool]")
 	REQUIRE(count.logicalProcessorCount() > 0);
 	REQUIRE(count.performanceCoreCount() > 0);
 	REQUIRE(count.efficiencyCoreCount() + count.performanceCoreCount() == count.physicalCoreCount());
-	REQUIRE(count.physicalCoreCount() >= count.logicalProcessorCount());
+	REQUIRE(count.logicalProcessorCount() >= count.physicalCoreCount());
 }
 
 TEST_CASE("thread pool construction and destruction", "[threadpool]")
