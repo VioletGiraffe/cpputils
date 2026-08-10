@@ -195,7 +195,8 @@ private:
 	std::condition_variable _tagStateChanged;
 	// Queued tasks hold a raw TaskTagState* into this map, so it must be node-based: an element's address has to survive the insertion of other tags.
 	std::map<uint64_t, TaskTagState> _tagStates;
-	// The workers access every pool member above, so this must be declared last: its destruction joins the threads.
+	// Declared last so every pool member the workers access is initialized before their constructors start threads.
+	// ~CThreadPool stops and joins them before member destruction begins.
 	std::forward_list<CPoolThread> _workerThreads; // Supports incomplete, non-movable elements; only iteration and clear are needed after construction
 };
 

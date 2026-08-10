@@ -467,8 +467,7 @@ TEST_CASE("parallelForAsync does not block the caller; onAllCompleted runs last,
 
 TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
 {
-	// Parked workers sit in a 5000 ms wait; stop() must wake them via the notify, not the timeout
-	// (guards the mutex-held wakeAllThreads and any future changes to the wait predicate).
+	// Parked workers sit in a 5000 ms wait; pool shutdown must wake them via the notify, not the timeout.
 	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 	std::this_thread::sleep_for(std::chrono::milliseconds(50)); // let the workers reach the parked wait
@@ -480,10 +479,9 @@ TEST_CASE("Shutdown of an idle pool is prompt", "[threadpool]")
 
 TEST_CASE("Destruction with a busy worker and a queued backlog", "[threadpool]")
 {
-	// One thread makes the outcome deterministic (with more, a not-yet-stopped peer may legitimately run part
-	// of the backlog while an earlier worker is being joined). The destructor's stop() flags terminate while
-	// the worker is mid-task; once the blocker finishes, the worker must exit its loop abandoning the backlog
-	// (the default is finishPendingTasks == false) - promptly, not via the idle timeout.
+	// The pool-wide stop request lands while the worker is mid-task; once the blocker finishes, the worker must
+	// exit its loop abandoning the backlog (the default is completePendingTasks == false) - promptly, not via
+	// the idle timeout.
 	std::atomic_bool blockerStarted{ false };
 	std::atomic_int backlogRun{ 0 };
 	std::chrono::steady_clock::time_point destructionStart;

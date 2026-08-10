@@ -9,14 +9,15 @@ class CPoolThread
 {
 public:
 	CPoolThread(CThreadPool& pool, size_t queueIndex, std::string threadName);
-	~CPoolThread();
+	~CPoolThread() = default;
 
 	CPoolThread(const CPoolThread&) = delete;
 	CPoolThread& operator=(const CPoolThread&) = delete;
 
 	[[nodiscard]] bool isStarted() const noexcept;
 
-	void stop();
+	void requestStop() noexcept;
+	void join();
 
 private:
 	void threadFunc() noexcept;
@@ -42,33 +43,20 @@ CPoolThread::CPoolThread(CThreadPool& pool, size_t queueIndex, std::string threa
 {
 }
 
-CPoolThread::~CPoolThread()
-{
-	stop();
-}
-
 bool CPoolThread::isStarted() const noexcept
 {
 	return _working;
 }
 
-void CPoolThread::stop()
+void CPoolThread::requestStop() noexcept
 {
 	_terminate = true;
+}
 
-	// In case the thread was already in the idle wait. The lock serializes the terminate store above with a
-	// waiter's predicate check, eliminating the lost-wakeup window. notify_all rather than notify_one: one wake
-	// could land on a different worker, whose own _terminate is not set (it would just re-check and re-block).
-	{
-		std::lock_guard locker{ _pool._idleMutex };
-		_pool._idleCv.notify_all();
-	}
-
-	if (_thread.joinable())
-		_thread.join();
-
-	_terminate = false;
-	_working = false;
+void CPoolThread::join()
+{
+	assert_r(_thread.joinable());
+	_thread.join();
 }
 
 void CPoolThread::threadFunc() noexcept
@@ -109,7 +97,7 @@ void CPoolThread::threadFunc() noexcept
 
 		// Wakes on _terminate and on _queuedCount becoming nonzero - i.e. on an enqueue to ANY queue, not just this
 		// worker's own: that is what lets an idle worker steal a busy owner's backlog. Both conditions are set outside
-		// _idleMutex, so they rely on the notify being sent under it (see enqueue() and stop()).
+		// _idleMutex, so they rely on the notify being sent under it (see enqueue() and finishAllThreads()).
 		if (!ran)
 		{
 			++_pool._idleCount.value; // Before the predicate reads _queuedCount, or enqueue() could miss this sleeper (see _idleCount)
@@ -165,12 +153,26 @@ CThreadPool::CThreadPool(uint32_t numThreads, std::string poolName) :
 	}
 }
 
-CThreadPool::~CThreadPool() noexcept = default;
+CThreadPool::~CThreadPool() noexcept
+{
+	finishAllThreads(false);
+}
 
 void CThreadPool::finishAllThreads(bool completePendingTasks)
 {
 	for (auto& th : _workerThreads)
-		th.stop(); // Terminate and join; any queued tasks are left in place for the drain below
+		th.requestStop();
+
+	if (!_workerThreads.empty())
+	{
+		// Every worker observes its stop request before this single wake. The lock serializes those requests with
+		// each idle waiter's predicate check, eliminating the lost-wakeup window.
+		std::lock_guard locker{ _idleMutex };
+		_idleCv.notify_all();
+	}
+
+	for (auto& th : _workerThreads)
+		th.join(); // Any queued tasks are left in place for the optional drain below
 
 	_workerThreads.clear();
 	assert_r(_idleCount.value == 0); // Every exited worker has left the idle wait and decremented; nonzero means a leak in the +/- pairing
