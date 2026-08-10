@@ -82,3 +82,7 @@ linux*|mac*|freebsd{
 }
 
 !mac*:g++*: QMAKE_CXXFLAGS += -fconcepts
+
+mac*{
+	QMAKE_MACOSX_DEPLOYMENT_TARGET = 13.3
+}
