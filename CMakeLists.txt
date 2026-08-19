@@ -67,7 +67,6 @@ target_include_directories(${TARGET_NAME} PUBLIC
 if(MSVC)
 	# Visual Studio specific flags
 	target_compile_options(${TARGET_NAME} PRIVATE
-		$<$<CONFIG:Debug>:/Ob2>
 		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/GS- /O2>
 		/MP /Zi 
 		/std:c++latest /permissive- /Zc:__cplusplus /Zc:char8_t
