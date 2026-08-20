@@ -1,32 +1,15 @@
 #pragma once
 
-#include "string/string_helpers.hpp"
-
 #include <functional>
 #include <string_view>
 
 class AdvancedAssert
 {
 public:
-	static void setLoggingFunc(const std::function<void (const char*)>& func);
+	static void setLoggingFunc(std::function<void (const char*)> func);
 
-	inline static void logAssertion(const char* condition, const char* func, int line) {
-		if (_loggingFunc)
-		{
-			std::string stream;
-			stream << "Assertion failed at " << func << ", line " << line << ": " << condition;
-			_loggingFunc(stream.c_str());
-		}
-	}
-
-	inline static void logMessage(std::string_view message, const char* func, int line) {
-		if (!_loggingFunc)
-			return;
-
-		std::string stream;
-		stream << func << ", line " << line << ": " << message;
-		_loggingFunc(stream.c_str());
-	}
+	static void logAssertion(const char* condition, const char* func, int line);
+	static void logMessage(std::string_view message, const char* func, int line);
 
 private:
 	static std::function<void (const char*)> _loggingFunc;

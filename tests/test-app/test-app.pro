@@ -1,4 +1,4 @@
-CONFIG += strict_c++ c++_latest
+CONFIG += strict_c++ c++latest
 CONFIG -= qt
 
 TEMPLATE = app
@@ -10,14 +10,8 @@ mac* | linux*|freebsd {
 	CONFIG(debug, debug|release):CONFIG *= Debug
 }
 
-contains(QT_ARCH, x86_64) {
-	ARCHITECTURE = x64
-} else {
-	ARCHITECTURE = x86
-}
-
-Release:OUTPUT_DIR=release/$${ARCHITECTURE}
-Debug:OUTPUT_DIR=debug/$${ARCHITECTURE}
+Release:OUTPUT_DIR=release
+Debug:OUTPUT_DIR=debug
 
 win*{
 	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus
@@ -25,6 +19,13 @@ win*{
 	QMAKE_CXXFLAGS += /MP /Zi /FS
 	QMAKE_CXXFLAGS += /wd4251
 	QMAKE_CXXFLAGS_WARN_ON = /W4
+
+	DEFINES += WIN32_LEAN_AND_MEAN NOMINMAX
+
+	Debug:QMAKE_LFLAGS += /DEBUG:FASTLINK /INCREMENTAL
+
+	Release:QMAKE_CXXFLAGS += /GL
+	Release:QMAKE_LFLAGS += /DEBUG:FULL /OPT:REF /OPT:ICF /TIME /LTCG:INCREMENTAL
 }
 
 linux*|mac*{
@@ -37,6 +38,10 @@ linux*|mac*{
 
 *g++*:QMAKE_CXXFLAGS += -fconcepts
 
+mac*{
+	QMAKE_MACOSX_DEPLOYMENT_TARGET = 13.3
+}
+
 DEFINES += CATCH_CONFIG_ENABLE_BENCHMARKING
 
 INCLUDEPATH += \
@@ -45,10 +50,12 @@ INCLUDEPATH += \
 	$${PWD}/../../cpp-template-utils #same, but for CI
 
 LIBS += \
-	-L../../../bin/$${OUTPUT_DIR} \ #self
+	-L$${PWD}/../../../bin/$${OUTPUT_DIR} \ #self
 	-Lbin/$${OUTPUT_DIR} \ #same, but for CI
 	-lcpputils
 
 SOURCES += \
-	main.cpp \
+	cinterruptablethread_tests.cpp \
+	execution_queue_tests.cpp \
+	memory_functions_tests.cpp \
 	thread_pool_tests.cpp

@@ -39,10 +39,28 @@ void CPeriodicExecutionThread::terminate()
 {
 	if (_thread.joinable())
 	{
-		_terminate = true;
+		{
+			std::lock_guard locker{ _cvMutex };
+			_terminate = true;
+			_cv.notify_all(); // Wake the thread immediately, whether it's parked paused or mid-period
+		}
 		_thread.join();
-		_terminate = false;
+		_terminate = false; // No lock needed: the thread is joined, nothing else touches this concurrently
 	}
+}
+
+void CPeriodicExecutionThread::pause()
+{
+	std::lock_guard locker{ _cvMutex };
+	_paused = true;
+	_cv.notify_all(); // Cut the current period wait short so the thread parks right away instead of running the workload once more
+}
+
+void CPeriodicExecutionThread::resume()
+{
+	std::lock_guard locker{ _cvMutex };
+	_paused = false;
+	_cv.notify_all(); // Wake the thread out of its indefinite park; the workload runs again immediately
 }
 
 void CPeriodicExecutionThread::threadFunc(uint32_t delayBeforeStartMs)
@@ -51,28 +69,28 @@ void CPeriodicExecutionThread::threadFunc(uint32_t delayBeforeStartMs)
 
 	assert_and_return_r(_workload, );
 
-	static constexpr const uint32_t sleepChunkLengthMs = 100u;
-
 	if (delayBeforeStartMs > 0)
 	{
-		const auto nSleepChunksBeforeStart = delayBeforeStartMs / sleepChunkLengthMs;
-		for (size_t i = 0; i < nSleepChunksBeforeStart && !_terminate; ++i)
-		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(sleepChunkLengthMs));
-		}
+		std::unique_lock locker{ _cvMutex };
+		_cv.wait_for(locker, std::chrono::milliseconds(delayBeforeStartMs), [this] { return _terminate; });
 	}
 
-	const auto nSleepChunks = _period / sleepChunkLengthMs;
-	const auto remainder = _period % sleepChunkLengthMs;
-
-	while (!_terminate) // Main workload loop
+	for (;;) // Main workload loop
 	{
+		{
+			// Parked here while paused; resume()/terminate() notify and wake it immediately.
+			std::unique_lock locker{ _cvMutex };
+			_cv.wait(locker, [this] { return !_paused || _terminate; });
+			if (_terminate)
+				return;
+		}
+
 		_workload();
 
-		for (size_t i = 0; i < nSleepChunks && !_terminate; ++i)
-			std::this_thread::sleep_for(std::chrono::milliseconds(sleepChunkLengthMs));
-
-		if (remainder != 0 && !_terminate)
-			std::this_thread::sleep_for(std::chrono::milliseconds(remainder));
+		// Waits out the period, but pause()/terminate() cut it short via notify.
+		std::unique_lock locker{ _cvMutex };
+		_cv.wait_for(locker, std::chrono::milliseconds(_period), [this] { return _paused || _terminate; });
+		if (_terminate)
+			return;
 	}
 }

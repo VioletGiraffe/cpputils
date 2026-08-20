@@ -1,6 +1,6 @@
 TEMPLATE = subdirs
 
-SUBDIRS = cpputils tests
+SUBDIRS = tests cpputils
 
 cpputils.file = ../cpputils.pro
 tests.file = test-app/test-app.pro

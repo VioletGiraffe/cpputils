@@ -8,13 +8,13 @@ const void* memfind(const void* haystack, const size_t haystackSize, const void*
 	if (needleSize == 0 || haystackSize == 0 || needleSize > haystackSize) [[unlikely]]
 		return nullptr;
 
-	const size_t lastPossibleStartingLocation = haystackSize - needleSize;
 	auto* bHaystack = reinterpret_cast<const std::byte*>(haystack), *bNeedle = reinterpret_cast<const std::byte*>(needle);
+	// One past the last offset the needle still fits at, so the same value bounds every first-byte scan below.
+	const auto* const searchEnd = bHaystack + (haystackSize - needleSize) + 1;
 
-	for (const auto* match = bHaystack, *end = bHaystack + lastPossibleStartingLocation; match != end; )
+	for (const auto* match = bHaystack; match < searchEnd; ++match)
 	{
-		const size_t lengthLeft = lastPossibleStartingLocation - static_cast<size_t>(match - bHaystack) + 1;
-		match = reinterpret_cast<const std::byte*>(::memchr(match, (char)bNeedle[0], lengthLeft));
+		match = reinterpret_cast<const std::byte*>(::memchr(match, (char)bNeedle[0], static_cast<size_t>(searchEnd - match)));
 		if (!match)
 			return nullptr;
 
@@ -23,8 +23,6 @@ const void* memfind(const void* haystack, const size_t haystackSize, const void*
 
 		if (::memcmp(match + 1, bNeedle + 1, needleSize - 1) == 0)
 			return match;
-
-		++match;
 	}
 
 	return nullptr;

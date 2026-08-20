@@ -1,24 +1,27 @@
-# Summary
+# cpputils
 
-This library contains various C++ classes and snippets I've found myself in need of as my experience grows (as well a the complexity of my projects). Keep reading for details.
+Cross-platform C++ utility library. It has no Qt dependency; compiled facilities form a static library and templates remain in their headers. `cpp-template-utils` is required.
 
-# Components
+## Facilities
 
-## "Advanced Assert"
+### Diagnostics
+
+#### `assert/advanced_assert.h`: advanced assertions
 
 A collection of assert-like macros with two key differences from a regular C `assert`:
-* the code you pass to the advanced assert macros (ending with `_r`) is executed in release build as well as debug;
-* when assertion fails, a message can be printed or otherwise processed using a callback function that you supply.
 
-Like  regular `assert`, the `assert*_r` macros *will not*  trigger the `abort()` function or display an error message box when assertion fails in release build.
-You can set your error message handler with `AdvancedAssert::setLoggingFunc(const std::function<void (const char*)>& func)`.
+- The code passed to the advanced assertion macros ending with `_r` is executed in release builds as well as debug builds.
+- When an assertion fails, a message can be printed or otherwise processed using a callback supplied by the application.
 
-So, the "advanced" assert macros:
-* don't alter the code execution between debug and release builds;
-* call the optional failed assertion handler (useful for logging);
-* behave like the standard `assert` otherwise.
+Like regular `assert`, the `assert*_r` macros do not call `abort()` or display an error message box when an assertion fails in a release build. Set the error-message handler with `AdvancedAssert::setLoggingFunc(std::function<void (const char*)> func)`.
 
-I use these macros instead of the regular `assert` in my projects as it significantly simplifies debugging release builds by analyzing log files. Additionally, `assert_and_return*` macros produce nice and compact code in cases where you need to check for an error that's not expected during normal workflow and return from the current function. The `assert_and_return*` macros let you significantly simplify and compactify routine error-checking code. Compare
+The advanced assertion macros therefore:
+
+- Do not alter code execution between debug and release builds.
+- Call the optional failed-assertion handler, which is useful for logging.
+- Behave like the standard `assert` otherwise.
+
+I use these macros instead of regular `assert` in my projects because they significantly simplify debugging release builds through log analysis. The `assert_and_return*` macros also produce compact code when checking for an error that is not expected during normal operation and returning from the current function. Compare:
 
 ```cpp
 bool doWork()
@@ -40,12 +43,12 @@ bool doWork()
         std::cout << "Error calling f3()";
         return false;
     }
-    
+
     return true;
 }
 ```
-    
-to the functionally identical code using the assert_r macros:
+
+with the functionally identical code using the assertion macros:
 
 ```cpp
 #include "assert/advanced_assert.h"
@@ -55,68 +58,62 @@ bool doWork()
     assert_and_return_r(f1(), false);
     assert_and_return_r(f2(), false);
     assert_and_return_r(f3(), false);
-    
+
     return true;
 }
 ```
 
-**WARNING**: The error logging callback is a static data member of the `AdvancedAssert` class. Make sure you understand the implications for projects with dynamic libraries (.so / .dll / .dylib etc.).
+**Warning:** The error-logging callback is a static data member of `AdvancedAssert`. Account for the resulting module boundaries when using the library from dynamic libraries (`.so`, `.dll`, or `.dylib`).
 
-## compiler/compiler_warnings_control.h
+#### `debugger/debugger_is_attached.h`
 
-This header contains macros for suppressing compiler warnings for the specific parts of the source file in as platform-independent way as possible.
+Detects whether the current process is being debugged on Windows and `/proc`-based systems.
 
-The most common use case:
+### Threading
 
-```cpp
-#include "compiler/compiler_warnings_control.h"
-    
-// The following header files belong to a 3rd-party library.
-// These headers produce various compiler warnings.
-// So I simply wrap them in warning suppression macros:
+| Header | Facility |
+|---|---|
+| `threading/cconsumerblockingqueue.h` | Bounded, thread-safe deque with blocking and non-blocking push/pop, timed waits, predicate wakeups, removal, inspection, and shutdown notification. |
+| `threading/cexecutionqueue.h` | Thread-safe queue of move-only callbacks for deferred or cross-thread execution. A tag replaces older queued work with the same tag; execution can consume one item or the entry-time backlog and contains task exceptions. |
+| `threading/cinterruptablethread.h` | Named owned thread whose payload receives a cancellation flag; destruction requests cancellation and joins, and uncaught payload exceptions are logged. |
+| `threading/cperiodicexecutionthread.h` | Named worker that runs a replaceable callback at a fixed period, with optional startup delay plus non-blocking pause/resume and terminating join. |
+| `threading/cthreadpool.h` | Work-stealing pool with fire-and-forget tasks and completion futures, owner tags with `retire()` lifetime barriers, synchronous/async parallel index loops, queue metrics, and optional backlog draining at shutdown. |
+| `threading/simplethread.h` | Minimal legacy `std::thread` owner with a cooperative termination flag. |
+| `threading/thread_helpers.h` | Affinity-aware logical/physical CPU counts, heterogeneous performance classes where the OS exposes them, and portable current-thread naming. |
 
-DISABLE_COMPILER_WARNINGS
-#include "libusb.h"
-#include "zlib.h"
-RESTORE_COMPILER_WARNINGS
-```
+### Timing and measurement
 
-## system/ctimeelapsed.h
+| Header | Facility |
+|---|---|
+| `timing/ctimeelapsed.h` | Pauseable/resumable steady-clock stopwatch with arbitrary `std::chrono` result units and nanosecond/microsecond/millisecond shortcuts. |
+| `timing/profiler.h` | Opt-out lightweight timeline marks, RAII scope timing, and named accumulating samples with a pluggable log sink. The profiler is intentionally single-threaded. |
+| `system/timing.h` | Millisecond elapsed-time clock (monotonic on Windows/Linux, wall-clock fallback elsewhere) and direct timestamp-counter access; the ARM counter helper is suitable only as thread-local entropy, not cross-core timing. |
 
-This is a cross-platform class for measuring wall time between two or more events with high accuracy (as opposed to the `clock()` function that reports CPU time and is hugely inaccurate for most use cases).
-Currently implemented for Windows, OS X and Linux.
-Arbitrary resolution - the return value is converted to any `std::chrono` type supplied as the template parameter (ms by default). The internal accuracy is at least μs or better.
-Can be paused and resumed.
+### Hashing and statistics
 
-## Threading
+| Header | Facility |
+|---|---|
+| `hash/sha3.h` | C API for incremental SHA3-256, SHA3-384, and SHA3-512. |
+| `hash/sha3_hasher.hpp` | Typed incremental SHA-3 wrapper for byte ranges, strings, and trivially serializable values, returning the full digest or a 64-bit prefix; also provides `sha3_64bit()`. |
+| `math/cmeancounter.h` | Streaming arithmetic, geometric, and exponentially smoothed means with reset support. |
 
-### CInterruptableThread
+### System integration
 
-A simple worker thread class - a convenience wrapper around `std::thread` with support for graceful interruption of the thread function. For that purpose, the termination flag (`atomic<bool>`) is exposed via the `terminationFlag()` method that the thread function may poll.
+| Header | Facility |
+|---|---|
+| `system/processfilepath.hpp` | Returns the current executable path as a wide string on Windows, Linux, and macOS; the result is not guaranteed absolute or canonical. |
+| `system/consoleapplicationexithandler.h` | Registers a callback for Windows console close, Ctrl-C, break, logoff, and shutdown events. Other platforms currently retain the callback but install no OS handler. |
+| `system/storagespeed.hpp` | Thread-safe, per-volume cached classification into fast random-access storage or slow/unknown storage, using native Windows, Linux, and macOS metadata. |
+| `system/win_utils.hpp` | Windows-only COM initialization RAII and readable messages for Win32 error codes, `GetLastError()`, and `HRESULT`; definitions collapse to a no-op COM macro elsewhere. |
 
-### CExecutionQueue
+### Language and memory helpers
 
-A thread-safe queue for `std::function` items (e. g. executable code). The main use case is queuing execution in a different thread, e. g. a worker thread can use the queue to post UI actions on the UI thread.
+| Header | Facility |
+|---|---|
+| `lang/enum.h` | Base template for enum-like types backed by a declared value/name table, with checked construction, name lookup, conversion, and iteration. |
+| `lang/type_traits_fast.hpp` | Convenient compile-time limits for fixed-width integers, `size_t`, and `float`. |
+| `utility_functions/memory_functions.h` | `memfind()`, a binary-safe search for a byte sequence inside another byte range. |
 
-### CConsumerBlockingQueue
+## Building
 
-A general purpose (template item type) thread-safe queue with the main purpose of easily organizing pipelines by connecting multiple worker threads in series. `CConsumerBlockingQueue::pop()` blocks until an item is available (uses condition variable). Non-blocking `try_pop` method is also available.
-
-### CWorkerThread / CWorkerThreadPool
-
-The `CWorkerThread` class is a worker thread that receives its work load from a `CConsumerBlockingQueue`. The `CWorkerThread` is not available directly, but only as a `CWorkerThreadPool` class of one or more threads. The thread pool spawns threads on demand rather than unconditionally - up to `maxNumThreads`.
-
-### CPeriodicExecutionThread
-
-Another simple `std::thread` wrapper that executes the specified code every `period_ms` milliseconds.
-
-# Building
-
-The companion header-only [cpp-template-utils](https://github.com/VioletGiraffe/cpp-template-utils) library is required.
-
-* A compiler with C++ 0x/11 support is required (std::thread, lambda functions etc.).
-* Windows: you can build using either Qt Creator or Visual Studio for IDE. Visual Studio 2013 or newer is required - v120 toolset or newer. Run `qmake -tp vc -r` to generate the solution for Visual Studio. I have not tried building with MinGW, but it should work as long as you enable C++ 11 support.
-* Linux: open the project file in Qt Creator and build it.
-* Mac OS X: You can use either Qt Creator (simply open the project in it) or Xcode (run `qmake -r -spec macx-xcode` and open the Xcode project that has been generated).
-
-P. S. Even though I use `qmake` as the build system for personal convenience, none of the actual code in this library depends on Qt. Only the C++11 standard library is required. Building with a diffrent build system is trivial, use the Qt `.pro` and `.pri` files as a reference.
+The library targets C++23. qmake (`cpputils.pro`) is the primary project; `CMakeLists.txt` is also provided. Supported implementations cover Windows, Linux, and macOS, with limited FreeBSD fallbacks. Add this repository and `cpp-template-utils` to the include path; qmake consumers should also include `dependencies.pri` so platform link dependencies are propagated.

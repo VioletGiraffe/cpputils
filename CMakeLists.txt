@@ -45,16 +45,22 @@ endforeach()
 endif()
 
 target_sources(${TARGET_NAME} PRIVATE
-		system/ctimeelapsed.cpp
+		timing/profiler.cpp
 		system/processfilepath.cpp
 		system/consoleapplicationexithandler.cpp
 		system/timing.cpp
+		system/storagespeed.cpp
 	)
 
 if (WIN32)
 	target_sources(${TARGET_NAME} PRIVATE
 		system/win_utils.cpp
 	)
+endif()
+
+if (APPLE)
+	# storagespeed.cpp; PUBLIC because the static lib defers the actual linking to the consumer
+	target_link_libraries(${TARGET_NAME} PUBLIC "-framework IOKit" "-framework CoreFoundation")
 endif()
 
 # Add include directories

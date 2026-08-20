@@ -38,6 +38,19 @@ public:
 	// This method is needed for shutdown - to wake up all the threads that wait on this queue
 	void wakeAllThreads();
 
+	// Removes every queued item matching the predicate; returns how many were removed. Thread-safe.
+	template <typename Pred>
+	size_t remove_if(Pred pred);
+
+	// Blocks until the queue is non-empty or the timeout elapses, WITHOUT popping anything. Thread-safe.
+	void waitForItem(uint32_t timeout_ms = uint32_max);
+
+	// Same, but also wakes up (without blocking at all, if already true) once extraWakeCondition() returns true.
+	// Lets a caller wait for "queue non-empty OR <some other flag>" without missing a wakeup that races ahead of the wait call,
+	// since the predicate is (re-)checked under the lock both before blocking and on every spurious/real wakeup.
+	template <typename Pred>
+	void waitForItem(uint32_t timeout_ms, Pred extraWakeCondition);
+
 	size_t size() const;
 	bool empty() const;
 
@@ -52,7 +65,36 @@ private:
 template <typename T>
 void CConsumerBlockingQueue<T>::wakeAllThreads()
 {
+	// This lock is not useless, it searializes the setting of terminate flag by the caller with checking it in the wait() predicate.
+	// It eliminates the window for lost wakeup.
+	std::lock_guard locker{ _mutex }; // The lock doesn't even need to be held when calling notify(), could release before, but for simplicity it stays
 	_cond.notify_all();
+}
+
+template <typename T>
+template <typename Pred>
+size_t CConsumerBlockingQueue<T>::remove_if(Pred pred)
+{
+	std::lock_guard<std::mutex> locker(_mutex);
+	return std::erase_if(_queue, pred);
+}
+
+template <typename T>
+void CConsumerBlockingQueue<T>::waitForItem(const uint32_t timeout_ms)
+{
+	std::unique_lock<std::mutex> lock(_mutex);
+	if (_queue.empty())
+		_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms));
+}
+
+template <typename T>
+template <typename Pred>
+void CConsumerBlockingQueue<T>::waitForItem(const uint32_t timeout_ms, Pred extraWakeCondition)
+{
+	std::unique_lock<std::mutex> lock(_mutex);
+	_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this, &extraWakeCondition] {
+		return !_queue.empty() || extraWakeCondition();
+	});
 }
 
 template <typename T>

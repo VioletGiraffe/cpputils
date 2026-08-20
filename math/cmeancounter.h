@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 template <typename T> class CMeanCounter
 {
 public:
@@ -14,7 +16,7 @@ public:
 
 private:
 	T _arithMeanAccumulator = T(0);
-	T _geomMeanAccumulator = T(1);
+	double _logSumAccumulator = 0.0; // sum of log(value), turned back into a product via exp() in geometricMean() to avoid overflowing on the product itself
 	float _smoothMeanAccumulator = 0.0f;
 
 	const float _smoothingFactor;
@@ -36,14 +38,14 @@ T CMeanCounter<T>::arithmeticMean() const
 template <typename T>
 T CMeanCounter<T>::geometricMean() const
 {
-	return _counter > 0 ? T(pow(_geomMeanAccumulator, 1 / T(_counter))) : T(0);
+	return _counter > 0 ? T(std::exp(_logSumAccumulator / double(_counter))) : T(0);
 }
 
 template <typename T>
 void CMeanCounter<T>::reset()
 {
 	_arithMeanAccumulator = T(0);
-	_geomMeanAccumulator = T(1);
+	_logSumAccumulator = 0.0;
 	_counter = 0;
 }
 
@@ -52,7 +54,7 @@ void CMeanCounter<T>::process(const T& value)
 {
 	++_counter;
 	_arithMeanAccumulator += value;
-	_geomMeanAccumulator *= value;
+	_logSumAccumulator += std::log(double(value));
 
 	if (_counter == 1)
 		_smoothMeanAccumulator = (float)value;

@@ -1,17 +1,32 @@
 #pragma once
 
+#include "assert/advanced_assert.h"
+#include "compiler/compiler_warnings_control.h"
+
+DISABLE_COMPILER_WARNINGS
+#include "3rdparty/function2/function2.hpp"
+RESTORE_COMPILER_WARNINGS
+
 #include <algorithm>
+#include <cstddef>
 #include <deque>
-#include <functional>
+#include <exception>
 #include <mutex>
+#include <string>
+#include <utility>
 
 // A thread-safe class for delayed code execution, useful for cross-thread execution / communication
 class CExecutionQueue
 {
-	struct Executee
+	static constexpr int untagged = -1;
+
+	// Fits a this pointer and 7 64-bit values without allocating on 64-bit platforms.
+	using Task = fu2::function_base<true, false, fu2::capacity_fixed<64>, true, false, void()>;
+
+	struct QueuedTask
 	{
 		int tag = 0;
-		std::function<void ()> code;
+		Task code;
 	};
 
 
@@ -23,41 +38,69 @@ public:
 	CExecutionQueue(const CExecutionQueue&) = delete;
 	CExecutionQueue& operator=(const CExecutionQueue&) = delete;
 
+	// After callers have prevented new operations, wait for an operation already inside the queue lock to finish.
 	inline ~CExecutionQueue()
 	{
 		std::lock_guard<std::mutex> locker(_queueMutex);
 	}
 
-	inline void enqueue(std::function<void ()> code, int tag = -1)
+	inline void enqueue(Task code, int tag = untagged)
 	{
 		std::lock_guard<std::mutex> locker(_queueMutex);
-		const auto existingExecutee = tag == -1 ? _queue.end() : std::find_if(_queue.begin(), _queue.end(), [tag](const Executee& e){return e.tag == tag;});
-		if (existingExecutee == _queue.end())
-			_queue.emplace_back(Executee{ tag, std::move(code) });
-		else
-			existingExecutee->code = std::move(code);
+		const auto existingTask = tag == untagged ? _queue.end() : std::find_if(_queue.begin(), _queue.end(), [tag](const QueuedTask& task){return task.tag == tag;});
+		if (existingTask != _queue.end())
+			_queue.erase(existingTask);
+
+		_queue.emplace_back(QueuedTask{ tag, std::move(code) });
 	}
 
+	// Call only after preventing new producers, otherwise what's left in the queue afterwards is arbitrary.
+	inline void clear()
+	{
+		std::lock_guard<std::mutex> locker(_queueMutex);
+		_queue.clear();
+	}
+
+	// Newly added work cannot extend an execAll() drain beyond the number of tasks pending at entry.
 	inline void exec(ExecutionMode mode = execAll)
 	{
-		Executee queueItem;
-		while (try_pop(queueItem))
+		std::size_t tasksToExecute = 1;
+		if (mode == execAll)
 		{
-			if (queueItem.code)
-				queueItem.code();
+			std::lock_guard<std::mutex> locker(_queueMutex);
+			tasksToExecute = _queue.size();
+		}
 
-			if (mode == execFirst)
-				return;
+		QueuedTask queuedTask;
+		while (tasksToExecute > 0 && tryPop(queuedTask))
+		{
+			--tasksToExecute;
+			if (!queuedTask.code)
+				continue;
+
+			// Contain each task so one that throws cannot abort the rest of the batch or reach the caller's loop.
+			try
+			{
+				queuedTask.code();
+			}
+			catch (const std::exception& e)
+			{
+				assert_unconditional_r(std::string{ "Exception in a queued task: " } + e.what());
+			}
+			catch (...)
+			{
+				assert_unconditional_r("Unknown exception in a queued task");
+			}
 		}
 	}
 
 private:
-	inline bool try_pop(Executee& e)
+	inline bool tryPop(QueuedTask& task)
 	{
 		std::lock_guard<std::mutex> locker(_queueMutex);
 		if (!_queue.empty())
 		{
-			e = _queue.front();
+			task = std::move(_queue.front());
 			_queue.pop_front();
 			return true;
 		}
@@ -65,8 +108,6 @@ private:
 		return false;
 	}
 
-private:
-	std::deque<Executee> _queue;
-	std::mutex           _queueMutex;
+	std::deque<QueuedTask> _queue;
+	std::mutex              _queueMutex;
 };
-
