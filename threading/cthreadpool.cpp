@@ -221,7 +221,7 @@ void CThreadPool::retire(uint64_t tag)
 	// remain in outstandingTaskCount and either finish normally or observe retired and are skipped before execution.
 	size_t removedCount = 0;
 	for (auto& q : _queues)
-		removedCount += q.remove_if([tagState](const TaggedTask& item) { return item.tagState == tagState; });
+		removedCount += q.remove_if([tagState](const TaggedTask& item) noexcept { return item.tagState == tagState; });
 	_queuedCount.value -= removedCount;
 
 	std::unique_lock lock(_tagStateMutex);
