@@ -137,15 +137,25 @@ static void spinFor(const uint32_t iterations) noexcept
 	for (volatile uint32_t i = 0; i < iterations; ++i) {}
 }
 
-// Calibrated once per run; the regime benches only need the right order of magnitude
+// Calibrated once per run. Fastest of several probes, since preemption and a pre-turbo clock can only understate
+// the rate: an undercount silently shortens every calibrated task, taking a regime bench off its regime.
 static uint32_t spinIterationsPerMicrosecond()
 {
 	static const uint32_t iterationsPerUs = [] {
-		constexpr uint32_t probeIterations = 4'000'000;
-		const auto start = std::chrono::steady_clock::now();
-		spinFor(probeIterations);
-		const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-		return static_cast<uint32_t>(probeIterations / std::max<int64_t>(elapsedUs, 1));
+		constexpr uint32_t probeIterations = 1'000'000;
+		spinFor(probeIterations); // Discarded: ramps the core out of its idle clock state
+
+		uint32_t fastest = 1;
+		for (int probe = 0; probe < 5; ++probe)
+		{
+			const auto start = std::chrono::steady_clock::now();
+			spinFor(probeIterations);
+			const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+			fastest = std::max(fastest, static_cast<uint32_t>(probeIterations / std::max<int64_t>(elapsedUs, 1)));
+		}
+
+		::printf("Spin calibration: %u iterations/us\n", fastest);
+		return fastest;
 	}();
 	return iterationsPerUs;
 }
@@ -176,15 +186,15 @@ static int64_t elapsedMs(std::chrono::steady_clock::time_point start)
 	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 }
 
-// The two [stealing] tests pin the work-stealing behavior: a task queued to a busy lane is picked up by an idle
-// worker instead of waiting for the lane's owner. The hashed lane placement cannot be targeted from a test, so
-// both tests are statistical; the task counts make the outcome near-certain (probabilities in the comments).
+// The two [stealing] tests pin the work-stealing behavior: a task gets run by a worker other than its lane's
+// owner. enqueue() assigns lanes round-robin with stride 1, so both tests place their tasks exactly, not
+// statistically.
 
 TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing]")
 {
-	// 8 tasks on 8 lanes collide (some lane gets two or more) in ~99.8% of rounds; each collided task must get
-	// a helper woken for it, so that every round takes ~100 ms regardless of placement. Sleep-based, so core
-	// count does not matter.
+	// One task per lane, but the wakeups are unrouted: notify_one picks an arbitrary parked worker, which owns
+	// the task's lane only 1 time in 8. So ~7 of the 8 tasks run on a worker that had to steal them - the
+	// property that makes one unrouted notify per task sufficient. Sleep-based, so core count does not matter.
 	CThreadPool pool(8, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
@@ -225,8 +235,8 @@ TEST_CASE("N sleep tasks on N threads run concurrently", "[threadpool][stealing]
 
 TEST_CASE("Tasks queued behind a busy worker are picked up promptly", "[threadpool][stealing]")
 {
-	// A long task occupies its lane's owner; of the 32 trivial tasks, ~8 hash onto that lane (all 32 missing it:
-	// ~0.01%); idle workers must take them over instead of letting them wait out the blocker.
+	// A long task occupies its lane's owner; round-robin puts exactly 8 of the 32 trivial tasks back on that
+	// lane, and idle workers must take those over instead of letting them wait out the blocker.
 	std::atomic_bool blockerStarted{ false };
 	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
@@ -831,19 +841,21 @@ TEST_CASE("Benchmark - multi-producer", "[threadpool][benchmark]")
 TEST_CASE("Benchmark - saturated pool", "[threadpool][benchmark]")
 {
 	const uint32_t nWorkers = std::max(2u, std::thread::hardware_concurrency() - 1);
-	// Task duration scales with the worker count so that one producer (~5-10 enqueues/us) always outruns the
-	// drain rate (nWorkers / duration = 2 tasks/us) regardless of the machine: a backlog builds and workers
-	// never park. This is the regime the enqueue fast path is designed for - _idleCount pinned at 0, no
-	// notify, the idle machinery completely quiet.
-	const uint32_t taskDurationUs = std::max(1u, nWorkers / 2);
-	const uint32_t spinIterations = taskDurationUs * spinIterationsPerMicrosecond();
-	::printf("Workers: %u, task duration: ~%u us\n", nWorkers, taskDurationUs);
+	// The regime the enqueue fast path is designed for: one producer outruns the drain, so a backlog builds
+	// and workers never park - _idleCount pinned at 0, no notify, the idle machinery completely quiet.
+	// The task duration follows from the drain rate the pool is held to, so the margin over the producer
+	// (a few enqueues/us) is the same on any machine. Not integer microseconds: 3 workers would floor to a 1 us
+	// task and a 3 tasks/us drain, which the producer does not reliably beat.
+	constexpr double targetDrainRateTasksPerUs = 1.0;
+	const double taskDurationUs = nWorkers / targetDrainRateTasksPerUs;
+	const auto spinIterations = static_cast<uint32_t>(taskDurationUs * spinIterationsPerMicrosecond());
+	::printf("Workers: %u, task duration: ~%.1f us\n", nWorkers, taskDurationUs);
 
 	BenchWorkload workload;
 	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
-	static constexpr size_t N = 50'000;
+	static constexpr size_t N = 20'000; // A sample runs for N / targetDrainRateTasksPerUs microseconds
 
 	BENCHMARK("Microsecond tasks") {
 		workload.reset();
@@ -862,7 +874,7 @@ TEST_CASE("Benchmark - parallelFor", "[threadpool][benchmark]")
 {
 	const uint32_t nWorkers = std::max(2u, std::thread::hardware_concurrency() - 1);
 	const uint32_t iterationsPerUs = spinIterationsPerMicrosecond();
-	::printf("Workers: %u, spin calibration: %u iterations/us\n", nWorkers, iterationsPerUs);
+	::printf("Workers: %u\n", nWorkers);
 
 	BenchWorkload workload;
 	CThreadPool pool(nWorkers, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));

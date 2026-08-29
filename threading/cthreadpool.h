@@ -44,7 +44,7 @@ struct TaggedTask {
 
 class CPoolThread;
 
-// A pool of worker threads over per-thread task queues: enqueue() hash-picks a queue (no shared point of
+// A pool of worker threads over per-thread task queues: enqueue() picks a queue round-robin (no shared point of
 // contention between busy workers), and a worker that finds its own queue empty steals from the others,
 // so one busy queue cannot hold tasks hostage while other workers idle.
 // Idle workers all park on ONE shared condvar: since any of them can take any task, a producer wakes a
