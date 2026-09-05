@@ -202,7 +202,7 @@ private:
 
 RESTORE_COMPILER_WARNINGS
 
-namespace detail {
+namespace thread_pool_detail {
 
 // The shared work-dispensing state of one parallelFor / parallelForAsync batch: indices are handed out one
 // at a time from the shared dispenser, so uneven per-index costs load-balance naturally. Owned via shared_ptr
@@ -256,7 +256,7 @@ template <typename Fn, typename OnAllCompleted>
 	return std::make_shared<ParallelBatchState<Fn, OnAllCompleted>>(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
 }
 
-} // namespace detail
+} // namespace thread_pool_detail
 
 template <typename Fn>
 void CThreadPool::parallelFor(const size_t count, Fn&& fn)
@@ -280,7 +280,7 @@ void CThreadPool::parallelFor(const size_t count, Fn&& fn)
 		bool done = false;
 	};
 	auto sync = std::make_shared<WaitSync>();
-	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), [sync] {
+	auto state = thread_pool_detail::makeParallelBatchState(count, std::forward<Fn>(fn), [sync] {
 		std::lock_guard lock(sync->mutex);
 		sync->done = true;
 		sync->allDone.notify_one();
@@ -305,7 +305,7 @@ void CThreadPool::parallelForAsync(const size_t count, Fn&& fn, OnAllCompleted&&
 		return;
 	}
 
-	auto state = detail::makeParallelBatchState(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
+	auto state = thread_pool_detail::makeParallelBatchState(count, std::forward<Fn>(fn), std::forward<OnAllCompleted>(onAllCompleted));
 	const uint32_t helperCount = (uint32_t)std::min<size_t>(count, _maxNumThreads);
 	for (uint32_t i = 0; i < helperCount; ++i)
 		enqueue([state] { state->drainIndices(); });
