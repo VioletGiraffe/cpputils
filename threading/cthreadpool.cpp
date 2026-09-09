@@ -84,11 +84,11 @@ void CPoolThread::threadFunc() noexcept
 				}
 				catch (const std::exception& e)
 				{
-					assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+					log_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
 				}
 				catch (...)
 				{
-					assert_unconditional_r("Unknown exception in a worker task");
+					log_unconditional_r("Unknown exception in a worker task");
 				}
 			}
 			_pool.completeTaggedTask(item.tagState);
@@ -266,11 +266,11 @@ void CThreadPool::executeContainedTask(TaggedTask& item)
 		}
 		catch (const std::exception& e)
 		{
-			assert_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
+			log_unconditional_r(std::string{ "Exception in a worker task: " } + e.what());
 		}
 		catch (...)
 		{
-			assert_unconditional_r("Unknown exception in a worker task");
+			log_unconditional_r("Unknown exception in a worker task");
 		}
 	}
 	completeTaggedTask(item.tagState);

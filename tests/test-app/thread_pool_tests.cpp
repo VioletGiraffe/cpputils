@@ -407,9 +407,9 @@ TEST_CASE("Nested parallelFor from inside pool tasks does not deadlock", "[threa
 
 TEST_CASE("parallelFor contains a throwing fn and still completes", "[threadpool][parallelfor]")
 {
-	// A throwing fn must not strand the batch: the throw is contained + logged (release-only, like the pool's task
-	// containment), the completion count still advances, and parallelFor returns instead of hanging. Every index's
-	// fn is entered exactly once - hits[i] is bumped before the throw - so a full count proves nothing was skipped.
+	// A throwing fn must not strand the batch: the throw is contained + logged, the completion count still advances,
+	// and parallelFor returns instead of hanging. Every index's fn is entered exactly once - hits[i] is bumped
+	// before the throw - so a full count proves nothing was skipped.
 	CThreadPool pool(4, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
@@ -705,9 +705,8 @@ TEST_CASE("A tag is reusable after it has been retired", "[threadpool]")
 
 TEST_CASE("enqueueWithFuture surfaces a throwing task as broken_promise", "[threadpool]")
 {
-	// The worker contains the task's exception (logged via assert_unconditional_r, which does not abort in a
-	// release build) and never fulfills the wrapper's promise, so the future observes broken_promise - the
-	// contract documented in cthreadpool.h. Meaningful in a release build; a debug build trips the assert.
+	// The worker contains the task's exception and never fulfills the wrapper's promise, so the future observes
+	// broken_promise - the contract documented in cthreadpool.h.
 	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
@@ -782,12 +781,12 @@ TEST_CASE("enqueue under a tag whose retire() is in progress is dropped", "[thre
 // - work stealing: all heavy tasks deliberately piled onto ONE lane; drain time near the ideal parallel time
 //   demonstrates stealing works, and a steal-path regression would show as an ~nWorkers-fold jump.
 
-TEST_CASE("Benchmark - single thread", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - single thread", "[.][threadpool][benchmark]")
 {
 	bench(1);
 }
 
-TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - multi thread", "[.][threadpool][benchmark]")
 {
 	const auto hw = std::thread::hardware_concurrency();
 	const auto nThreads = std::max(2u, hw - 1);
@@ -795,14 +794,14 @@ TEST_CASE("Benchmark - multi thread", "[threadpool][benchmark]")
 	bench(nThreads);
 }
 
-TEST_CASE("Benchmark - hyper thread", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - hyper thread", "[.][threadpool][benchmark]")
 {
 	const auto nThreads = 4 * std::thread::hardware_concurrency();
 	::printf("Threads: %d\n", nThreads);
 	bench(nThreads);
 }
 
-TEST_CASE("Benchmark - multi-producer", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - multi-producer", "[.][threadpool][benchmark]")
 {
 	const auto hw = std::thread::hardware_concurrency();
 	const uint32_t nProducers = std::max(2u, hw / 2);
@@ -838,7 +837,7 @@ TEST_CASE("Benchmark - multi-producer", "[threadpool][benchmark]")
 	};
 }
 
-TEST_CASE("Benchmark - saturated pool", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - saturated pool", "[.][threadpool][benchmark]")
 {
 	const uint32_t nWorkers = std::max(2u, std::thread::hardware_concurrency() - 1);
 	// The regime the enqueue fast path is designed for: one producer outruns the drain, so a backlog builds
@@ -870,7 +869,7 @@ TEST_CASE("Benchmark - saturated pool", "[threadpool][benchmark]")
 	};
 }
 
-TEST_CASE("Benchmark - parallelFor", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - parallelFor", "[.][threadpool][benchmark]")
 {
 	const uint32_t nWorkers = std::max(2u, std::thread::hardware_concurrency() - 1);
 	const uint32_t iterationsPerUs = spinIterationsPerMicrosecond();
@@ -904,7 +903,7 @@ TEST_CASE("Benchmark - parallelFor", "[threadpool][benchmark]")
 	};
 }
 
-TEST_CASE("Benchmark - task latency", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - task latency", "[.][threadpool][benchmark]")
 {
 	// Latency, not throughput: one task in flight at a time on an otherwise idle pool. Every iteration pays the
 	// full wake path - notify, worker wakes from the condvar, pop, run, promise fulfilled, caller resumes. The
@@ -919,7 +918,7 @@ TEST_CASE("Benchmark - task latency", "[threadpool][benchmark]")
 	};
 }
 
-TEST_CASE("Benchmark - work stealing", "[threadpool][benchmark]")
+TEST_CASE("Benchmark - work stealing", "[.][threadpool][benchmark]")
 {
 	// enqueue() assigns lanes round-robin with stride 1, so a heavy task posted every nWorkers-th enqueue lands
 	// on the SAME lane every time: all the heavy work piles onto one victim lane, and once the trivial fillers

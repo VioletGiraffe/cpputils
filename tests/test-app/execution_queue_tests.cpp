@@ -181,8 +181,7 @@ TEST_CASE("Execution queue skips an empty task rather than invoking it", "[execu
 
 TEST_CASE("Execution queue isolates a throwing task and runs the rest of the batch", "[executionqueue]")
 {
-	// The throw is contained + logged (assert_unconditional_r only logs in release); exec() must neither propagate
-	// it nor skip the task queued behind it.
+	// The throw is contained + logged; exec() must neither propagate it nor skip the task queued behind it.
 	CExecutionQueue queue;
 	int executedAfterThrow = 0;
 

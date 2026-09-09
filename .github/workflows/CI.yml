@@ -2,86 +2,48 @@ name: CI
 
 on: [push, pull_request, workflow_dispatch]
 
-env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
-
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
-
 jobs:
   build:
-    name: Build & test on ${{ matrix.os }} with ${{ matrix.compiler }}
+    name: Build & test on ${{ matrix.os }}, ${{ matrix.config }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        # Debug keeps the asserts the threading contracts are guarded with
+        config: [release, debug]
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: 6.10.*
-        target: desktop
-        archives: 'qtbase icu'
-
-    - name: Windows - set up MSVC environment
-      if: startsWith(matrix.os, 'windows')
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
-
     - name: Install dependencies
       run: git clone https://github.com/VioletGiraffe/cpp-template-utils --depth 1
 
-    - name: Windows
+    - name: Linux - install a compiler with C++23 support
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        sudo apt update -y
+        sudo apt install -qq gcc-14 g++-14
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 50
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 50
+
+    - name: Windows - build & test
       if: startsWith(matrix.os, 'windows')
       shell: cmd
-      run: |
-        %QT_ROOT_DIR%\bin\qmake.exe -v
-        pushd tests
-        %QT_ROOT_DIR%\bin\qmake.exe -tp vc -r
-        msbuild /t:Build /p:Configuration=Release
-        popd
+      run: scripts\run_tests.bat ${{ matrix.config }}
 
-    - name: Mac
-      if: startsWith(matrix.os, 'macos')
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: |
-        clang --version
-        pushd tests
-        $QT_ROOT_DIR/bin/qmake -r -config release CONFIG+=release "DEFINES+=NDEBUG"
-        make -j$(sysctl -n hw.ncpu)
-        popd
+    - name: Unix - build & test
+      if: ${{ !startsWith(matrix.os, 'windows') }}
+      run: ./scripts/run_tests.sh ${{ matrix.config }}
 
-    - name: Linux
-      if: startsWith(matrix.os, 'ubuntu')
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: |
-        g++ --version
-        sudo apt update -y; sudo apt install -qq gcc-14 g++-14 #required for C++2c
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 50
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 50
-        g++ --version
-        pushd tests
-        $QT_ROOT_DIR/bin/qmake -r -config release CONFIG+=release "DEFINES+=NDEBUG"
-        make -j$(nproc)
-        popd
+    # The benchmarks carry REQUIREs of their own, so release runs them; their timing-tuned checks
+    # do not hold in an unoptimized build, and [.] keeps them out of every other run.
+    - name: Windows - run benchmarks
+      if: startsWith(matrix.os, 'windows') && matrix.config == 'release'
+      shell: cmd
+      run: scripts\run_tests.bat release "[benchmark]"
 
-    - name: Test run
-      if: startsWith(matrix.os, 'macos')
-      run: ./tests/bin/test-app.app/Contents/MacOS/test-app
-      
-    - name: Test run
-      if: startsWith(matrix.os, 'ubuntu')
-      run: ./tests/bin/test-app
-
-    - name: Test run
-      if: startsWith(matrix.os, 'windows')
-      run: ./tests/bin/test-app.exe
+    - name: Unix - run benchmarks
+      if: ${{ !startsWith(matrix.os, 'windows') && matrix.config == 'release' }}
+      run: ./scripts/run_tests.sh release "[benchmark]"

@@ -85,11 +85,11 @@ public:
 			}
 			catch (const std::exception& e)
 			{
-				assert_unconditional_r(std::string{ "Exception in a queued task: " } + e.what());
+				log_unconditional_r(std::string{ "Exception in a queued task: " } + e.what());
 			}
 			catch (...)
 			{
-				assert_unconditional_r("Unknown exception in a queued task");
+				log_unconditional_r("Unknown exception in a queued task");
 			}
 		}
 	}

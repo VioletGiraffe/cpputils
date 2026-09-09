@@ -232,11 +232,11 @@ struct ParallelBatchState
 			}
 			catch (const std::exception& e)
 			{
-				assert_unconditional_r(std::string{ "Exception in a parallelFor task: " } + e.what());
+				log_unconditional_r(std::string{ "Exception in a parallelFor task: " } + e.what());
 			}
 			catch (...)
 			{
-				assert_unconditional_r("Unknown exception in a parallelFor task");
+				log_unconditional_r("Unknown exception in a parallelFor task");
 			}
 			if (completedCount.fetch_add(1) + 1 == count)
 				onAllCompleted();

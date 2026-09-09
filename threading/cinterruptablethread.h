@@ -40,11 +40,11 @@ public:
 			}
 			catch (const std::exception& e)
 			{
-				assert_unconditional_r("Exception in thread " + _threadName + ": " + e.what());
+				log_unconditional_r("Exception in thread " + _threadName + ": " + e.what());
 			}
 			catch (...)
 			{
-				assert_unconditional_r("Unknown exception in thread " + _threadName);
+				log_unconditional_r("Unknown exception in thread " + _threadName);
 			}
 		});
 	}

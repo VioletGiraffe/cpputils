@@ -67,7 +67,12 @@ endif()
 target_include_directories(${TARGET_NAME} PUBLIC
 	${CMAKE_CURRENT_LIST_DIR}/
 	${CMAKE_CURRENT_LIST_DIR}/../cpp-template-utils/
+	${CMAKE_CURRENT_LIST_DIR}/cpp-template-utils/ # CI clones it inside the repo rather than beside it
 )
+
+# threading/; PUBLIC because the static lib defers the actual linking to the consumer
+find_package(Threads REQUIRED)
+target_link_libraries(${TARGET_NAME} PUBLIC Threads::Threads)
 
 # Platform-specific flags
 if(MSVC)

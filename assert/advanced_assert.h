@@ -38,6 +38,10 @@ private:
 #define assert_message_r(condition, message) do {if (!static_cast<bool>(condition)) [[unlikely]] {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!static_cast<bool>(#message));}} while(false)
 #define assert_unconditional_r(message) do {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!static_cast<bool>(#message));} while(false)
 
+// Reports in both configurations without asserting in either: for an outcome the caller is documented to survive,
+// where a debug break would fire on working code
+#define log_unconditional_r(message) do {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__);} while(false)
+
 #define assert_and_return_r(condition, returnValue) do {if (!static_cast<bool>(condition)) [[unlikely]] {AdvancedAssert::logAssertion(#condition, __FUNCTION__, __LINE__); assert_debug_only(!static_cast<bool>(#condition)); return returnValue;}} while(false)
 #define assert_and_return_message_r(condition, message, returnValue) do {if (!static_cast<bool>(condition)) [[unlikely]] {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!static_cast<bool>(#message)); return returnValue;}} while(false)
 #define assert_and_return_unconditional_r(message, returnValue) do {AdvancedAssert::logMessage((message), __FUNCTION__, __LINE__); assert_debug_only(!static_cast<bool>(#message)); return returnValue;} while(false)
