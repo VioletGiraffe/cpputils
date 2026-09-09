@@ -6,7 +6,11 @@
 
 #include <assert.h>
 #include <array>
+#include <memory>
 #include <stdint.h>
+#include <string.h>
+#include <string>
+#include <type_traits>
 
 template <size_t NBits>
 class Sha3_Hasher {
