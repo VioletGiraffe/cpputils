@@ -13,7 +13,7 @@
 #include <locale>
 
 #ifndef _WIN32
-inline std::wstring stringToWstring(const char* utf8Bytes, const size_t numBytes)
+static inline std::wstring stringToWstring(const char* utf8Bytes, const size_t numBytes)
 {
 	//setup converter
 	using convert_type = std::codecvt_utf8<typename std::wstring::value_type>;

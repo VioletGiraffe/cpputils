@@ -5,7 +5,7 @@
 #else
 #include <time.h>
 
-inline constexpr uint64_t tsToMs(struct timespec& ts)
+static inline constexpr uint64_t tsToMs(struct timespec& ts)
 {
 	return (uint64_t)ts.tv_sec * 1000ull + (uint64_t)ts.tv_nsec / 1'000'000;
 }
