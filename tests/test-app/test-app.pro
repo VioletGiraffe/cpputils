@@ -14,7 +14,7 @@ Release:OUTPUT_DIR=release
 Debug:OUTPUT_DIR=debug
 
 win*{
-	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus
+	QMAKE_CXXFLAGS += /std:c++latest /permissive- /Zc:__cplusplus /utf-8
 
 	QMAKE_CXXFLAGS += /MP /Zi /FS
 	QMAKE_CXXFLAGS += /wd4251
@@ -31,10 +31,19 @@ win*{
 
 linux*|mac*{
 	QMAKE_CXXFLAGS += -std=c++2b
-	QMAKE_CXXFLAGS_WARN_ON = -Wall
 
 	Release:DEFINES += NDEBUG=1
 	Debug:DEFINES += _DEBUG
+}
+
+linux*:Release {
+	QMAKE_CXXFLAGS += -flto=auto
+	QMAKE_LFLAGS   += -flto=auto
+}
+
+mac*:Release {
+	QMAKE_CXXFLAGS += -flto=thin
+	QMAKE_LFLAGS   += -flto=thin
 }
 
 *g++*:QMAKE_CXXFLAGS += -fconcepts
