@@ -14,14 +14,15 @@ RESTORE_COMPILER_WARNINGS
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
+#include <exception>
 #include <forward_list>
 #include <future>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <type_traits>
 #include <utility>
 

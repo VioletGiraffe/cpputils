@@ -8,12 +8,17 @@ RESTORE_COMPILER_WARNINGS
 #include "threading/cthreadpool.h"
 #include "threading/thread_helpers.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
+#include <vector>
 
 TEST_CASE("CpuCount test", "[threadpool]")
 {

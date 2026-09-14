@@ -2,7 +2,9 @@
 #include "thread_helpers.h"
 #include "assert/advanced_assert.h"
 
+#include <chrono>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 class CPoolThread
