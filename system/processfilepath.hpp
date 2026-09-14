@@ -1,6 +1,7 @@
 #pragma once
 
-#include <string>
+#include <filesystem>
 
-// Returns self file path (may not be absolute path!)
-std::wstring processFilePath();
+// The running executable's path, not necessarily absolute or free of symlinks
+// Empty on failure
+std::filesystem::path processFilePath();
