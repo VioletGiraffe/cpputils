@@ -47,7 +47,7 @@ include (hash/hash.pri)
 include (utility_functions/utility_functions.pri)
 include (timing/timing.pri)
 
-win32*:!*msvc2012:*msvc* {
+win32*:*msvc* {
 	QMAKE_CXXFLAGS += /FS
 }
 
@@ -68,8 +68,6 @@ win*{
 	QMAKE_CXXFLAGS += /we4477         # printf format string does not match the argument
 	QMAKE_CXXFLAGS += /we4551         # function call missing argument list
 	QMAKE_CXXFLAGS += /we4552 /we4553 # operator has no effect; did you intend '='?
-
-	!*msvc2013*:QMAKE_LFLAGS += /DEBUG:FASTLINK
 
 	Debug:QMAKE_LFLAGS += /INCREMENTAL
 	Release:QMAKE_LFLAGS += /OPT:REF /OPT:ICF
