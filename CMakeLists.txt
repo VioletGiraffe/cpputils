@@ -97,22 +97,29 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	target_compile_options(${TARGET_NAME} PRIVATE
 		-std=c++2b
 		-pedantic-errors
-		-Wall -Wextra -Wdelete-non-virtual-dtor -Werror=duplicated-cond
-		-Werror=duplicated-branches -Warith-conversion -Warray-bounds
-		-Wattributes -Wcast-align -Wcast-qual -Wconversion -Wdate-time
-		-Wduplicated-branches -Wendif-labels -Werror=overflow
-		-Werror=return-type -Werror=shift-count-overflow -Werror=sign-promo
-		-Werror=undef -Wextra -Winit-self -Wlogical-op -Wmissing-include-dirs
-		-Wnull-dereference -Wpedantic -Wpointer-arith -Wredundant-decls
-		-Wshadow -Wstrict-aliasing -Wstrict-aliasing=3 -Wuninitialized
-		-Wunused-const-variable=2 -Wwrite-strings -Wlogical-op
-		-Wno-missing-include-dirs -Wno-undef -Wno-missing-field-initializers
+		-Wall -Wextra -Wnon-virtual-dtor -Woverloaded-virtual -Wcast-qual -Wdouble-promotion -Wfloat-conversion -Wundef
+		-Wformat=2 -Wextra-semi -Wzero-as-null-pointer-constant -Wfloat-equal -Wredundant-decls -Wvla
+		-Wno-missing-field-initializers
+		-Werror=return-type -Werror=uninitialized -Werror=delete-non-virtual-dtor -Werror=address
+		-Werror=sizeof-pointer-div -Werror=sizeof-pointer-memaccess
 		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:-O3>
 	)
-	target_link_options(${TARGET_NAME} PRIVATE -fuse-ld=gold)
 
-	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-		target_compile_options(${TARGET_NAME} PRIVATE -fconcepts)
+	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		target_compile_options(${TARGET_NAME} PRIVATE
+			-Wshadow-all -Wcast-align -Wcomma -Wconditional-uninitialized -Wheader-hygiene -Wloop-analysis -Wextra-semi-stmt -Wunreachable-code-aggressive
+			-Wshorten-64-to-32 -Wmissing-prototypes -Wmissing-variable-declarations
+			-Wimplicit-fallthrough -Wsuggest-override
+			-Werror=return-stack-address -Werror=infinite-recursion
+		)
+	else()
+		target_compile_options(${TARGET_NAME} PRIVATE
+			-fconcepts
+			-Wshadow -Wcast-align=strict -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference
+			-Wsuggest-override -Wmissing-declarations -Wmismatched-tags -Wunused-const-variable=1
+			-Werror=return-local-addr -Werror=memset-transposed-args -Werror=nonnull-compare -Werror=mismatched-new-delete -Werror=infinite-recursion
+			-Wcatch-value=3 -Werror=catch-value # -Werror=catch-value on its own would only enable level 1
+		)
 	endif()
 
 	# Add defines based on configuration
