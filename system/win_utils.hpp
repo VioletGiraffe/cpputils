@@ -32,6 +32,7 @@ private:
 	bool _initializationSucceeded = false;
 };
 
+// The system message in UTF-8: in English if installed, else in the user's or the system's language. Empty when the code has no message.
 [[nodiscard]] std::string ErrorStringFromErrorCode(DWORD errCode) noexcept;
 [[nodiscard]] std::string ErrorStringFromLastError() noexcept;
 [[nodiscard]] std::string ErrorStringFromHRESULT(HRESULT hr) noexcept;
