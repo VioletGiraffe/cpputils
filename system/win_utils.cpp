@@ -21,7 +21,7 @@ std::string ErrorStringFromErrorCode(const DWORD errCode) noexcept
 
 	std::string str(msgBuf, nCharsWritten);
 	if (str.ends_with("\r\n"))
-		str[str.size() - 2] = '\0'; // Remove trailing CRLF
+		str.resize(str.size() - 2); // Remove trailing CRLF
 
 	return str;
 }
