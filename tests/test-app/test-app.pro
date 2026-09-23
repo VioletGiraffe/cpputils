@@ -44,6 +44,7 @@ mac*:Release {
 }
 
 *g++*:QMAKE_CXXFLAGS += -fconcepts
+*g++*:QMAKE_CXXFLAGS_WARN_ON += -Wno-maybe-uninitialized # False positives on std::optional and std::expected
 
 mac*{
 	QMAKE_MACOSX_DEPLOYMENT_TARGET = 13.3
