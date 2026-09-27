@@ -50,8 +50,6 @@ mac*{
 	QMAKE_MACOSX_DEPLOYMENT_TARGET = 13.3
 }
 
-DEFINES += CATCH_CONFIG_ENABLE_BENCHMARKING
-
 INCLUDEPATH += \
 	$${PWD}/../../ \ #self
 	$${PWD}/../../../cpp-template-utils \

@@ -27,9 +27,6 @@ target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
 # CONFIG += strict_c++ in the .pro
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_EXTENSIONS OFF)
 
-# thread_pool_tests.cpp needs Catch2's benchmarking support
-target_compile_definitions(${TARGET_NAME} PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
-
 if (MSVC)
 	target_compile_options(${TARGET_NAME} PRIVATE /permissive- /Zc:__cplusplus /MP /W4)
 	target_compile_definitions(${TARGET_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
