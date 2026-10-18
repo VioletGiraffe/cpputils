@@ -13,7 +13,8 @@ if [ $# -gt 0 ]; then shift; fi
 
 BUILD_DIR="${ROOT}/build/${CONFIG}"
 
-cmake -S "${ROOT}/tests" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE="${CONFIG}" -DOUTPUT_DIR="${BUILD_DIR}/bin"
+# CMAKE_BUILD_TYPE serves single-config generators, --config multi-config ones; each ignores the other
+cmake -S "${ROOT}/tests" -B "${BUILD_DIR}" --no-warn-unused-cli -DCMAKE_BUILD_TYPE="${CONFIG}" -DOUTPUT_DIR="${BUILD_DIR}/bin"
 cmake --build "${BUILD_DIR}" --config "${CONFIG}" --parallel "$(getconf _NPROCESSORS_ONLN)"
 
 exec "${BUILD_DIR}/bin/tests" "$@"

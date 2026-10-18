@@ -10,7 +10,8 @@ if /i "%~1"=="debug" set "CONFIG=Debug"
 
 set "BUILD_DIR=%~dp0..\build\%CONFIG%"
 
-cmake -S "%~dp0..\tests" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%CONFIG% -DOUTPUT_DIR="%BUILD_DIR%\bin" || exit /b 1
+:: CMAKE_BUILD_TYPE serves single-config generators, --config multi-config ones; each ignores the other
+cmake -S "%~dp0..\tests" -B "%BUILD_DIR%" --no-warn-unused-cli -DCMAKE_BUILD_TYPE=%CONFIG% -DOUTPUT_DIR="%BUILD_DIR%\bin" || exit /b 1
 cmake --build "%BUILD_DIR%" --config %CONFIG% --parallel || exit /b 1
 
 "%BUILD_DIR%\bin\tests.exe" %2 %3 %4 %5
