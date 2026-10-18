@@ -139,7 +139,7 @@ static void waitForCompletion(CThreadPool& pool, const BenchWorkload& workload, 
 // understating contention, whereas real tasks compute throughout.
 static void spinFor(const uint32_t iterations) noexcept
 {
-	for (volatile uint32_t i = 0; i < iterations; ++i) {}
+	for (volatile uint32_t i = 0; i < iterations; i = i + 1) {} // Not ++i: deprecated on volatile since C++20
 }
 
 // Calibrated once per run. Fastest of several probes, since preemption and a pre-turbo clock can only understate
