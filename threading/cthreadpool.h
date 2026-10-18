@@ -117,6 +117,7 @@ public:
 		return queueLength;
 	}
 
+	// A throwing task leaves the future with std::future_error (broken_promise), not the task's exception
 	template <typename F>
 	[[nodiscard]] std::future<void> enqueueWithFuture(F&& task, uint64_t tag = 0)
 	{

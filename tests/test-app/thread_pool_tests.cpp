@@ -715,7 +715,12 @@ TEST_CASE("enqueueWithFuture surfaces a throwing task as broken_promise", "[thre
 	CThreadPool pool(2, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__));
 	pool.waitUntilStarted();
 
-	auto future = pool.enqueueWithFuture([] { throw std::runtime_error("deliberate task failure"); });
+	// Must not be provably always-throwing: the wrapper's set_value() would then be unreachable code (MSVC C4702)
+	volatile bool taskThrows = true;
+	auto future = pool.enqueueWithFuture([&taskThrows] {
+		if (taskThrows)
+			throw std::runtime_error("deliberate task failure");
+	});
 
 	bool threwBrokenPromise = false;
 	try

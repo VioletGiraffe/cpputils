@@ -19,8 +19,8 @@ add_executable(${TARGET_NAME}
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. cpputils)
 target_link_libraries(${TARGET_NAME} PRIVATE cpputils)
 
-# The library enables it for its consumers; a test run spends the link time and gains nothing
-set_target_properties(cpputils PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
+# The library enables IPO for Release; a test run spends the link time and gains nothing
+set_target_properties(cpputils PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE)
 
 # CONFIG += c++latest in the .pro
 target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
