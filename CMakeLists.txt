@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15) # Has to be 3.15+ because of this: https://
 set(TARGET_NAME cpputils)
 project(${TARGET_NAME} LANGUAGES CXX)
 
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 
 file(GLOB_RECURSE SOURCES
 	"debugger/*.cpp"
