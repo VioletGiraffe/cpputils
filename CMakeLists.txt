@@ -26,9 +26,6 @@ file(GLOB_RECURSE HEADERS
 	"utility_functions/*.h*"
 )
 
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "")
-set(CMAKE_C_FLAGS_RELWITHDEBINFO "")
-
 # Set the library as static
 add_library(${TARGET_NAME} STATIC ${SOURCES} ${HEADERS})
 
@@ -74,27 +71,31 @@ target_include_directories(${TARGET_NAME} PUBLIC
 find_package(Threads REQUIRED)
 target_link_libraries(${TARGET_NAME} PUBLIC Threads::Threads)
 
-# Platform-specific flags
-if(MSVC)
-	# Visual Studio specific flags
-	target_compile_options(${TARGET_NAME} PRIVATE
-		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/GS- /O2>
-		/MP /Zi 
+# Compiler and linker options mirroring cpputils.pro, for cpputils and for the projects that build it as a subdirectory
+add_library(cpputils_build_options INTERFACE)
+
+if (WIN32)
+	target_compile_definitions(cpputils_build_options INTERFACE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
+
+if (MSVC)
+	target_compile_options(cpputils_build_options INTERFACE
+		/MP /Zi /FS
 		/std:c++latest /permissive- /Zc:__cplusplus /Zc:char8_t
-		/W4 /FS /Gy
+		/W4
+		/we4715 /we4716 # not all control paths return a value / must return a value
+		/we4172         # returning address of local variable or temporary
+		/we4700         # uninitialized local variable used
+		/we4477         # printf format string does not match the argument
+		/we4551         # function call missing argument list
+		/we4552 /we4553 # operator has no effect; did you intend '='?
 	)
-	target_link_options(${TARGET_NAME} PRIVATE
-		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/OPT:REF /OPT:ICF>
+	target_link_options(cpputils_build_options INTERFACE
 		$<$<CONFIG:Debug>:/INCREMENTAL>
-		/DEBUG:FASTLINK
-	)
-	target_compile_definitions(${TARGET_NAME} PRIVATE
-		WIN32_LEAN_AND_MEAN
-		NOMINMAX
+		$<$<CONFIG:Release>:/OPT:REF /OPT:ICF>
 	)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-	# Unix-like specific flags
-	target_compile_options(${TARGET_NAME} PRIVATE
+	target_compile_options(cpputils_build_options INTERFACE
 		-std=c++2b
 		-pedantic-errors
 		-Wall -Wextra -Wnon-virtual-dtor -Woverloaded-virtual -Wcast-qual -Wdouble-promotion -Wfloat-conversion -Wundef
@@ -102,30 +103,38 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 		-Wno-missing-field-initializers
 		-Werror=return-type -Werror=uninitialized -Werror=delete-non-virtual-dtor -Werror=address
 		-Werror=sizeof-pointer-div -Werror=sizeof-pointer-memaccess
-		$<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:-O3>
 	)
 
 	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-		target_compile_options(${TARGET_NAME} PRIVATE
+		target_compile_options(cpputils_build_options INTERFACE
 			-Wshadow-all -Wcast-align -Wcomma -Wconditional-uninitialized -Wheader-hygiene -Wloop-analysis -Wextra-semi-stmt -Wunreachable-code-aggressive
+			-Wno-shadow-uncaptured-local # flags every [x = std::move(x)] init-capture
 			-Wshorten-64-to-32 -Wmissing-prototypes -Wmissing-variable-declarations
 			-Wimplicit-fallthrough -Wsuggest-override
 			-Werror=return-stack-address -Werror=infinite-recursion
 		)
 	else()
-		target_compile_options(${TARGET_NAME} PRIVATE
-			-fconcepts
+		target_compile_options(cpputils_build_options INTERFACE
 			-Wshadow -Wcast-align=strict -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference
 			-Wsuggest-override -Wmissing-declarations -Wmismatched-tags -Wunused-const-variable=1
 			-Werror=return-local-addr -Werror=memset-transposed-args -Werror=nonnull-compare -Werror=mismatched-new-delete -Werror=infinite-recursion
 			-Wcatch-value=3 -Werror=catch-value # -Werror=catch-value on its own would only enable level 1
 			-Wno-maybe-uninitialized # False positives on std::optional and std::expected
 		)
+
+		if (NOT APPLE)
+			target_compile_options(cpputils_build_options INTERFACE -fconcepts)
+		endif()
 	endif()
 
-	# Add defines based on configuration
-	target_compile_definitions(${TARGET_NAME} PRIVATE
+	target_compile_definitions(cpputils_build_options INTERFACE
 		"$<$<CONFIG:Release>:NDEBUG=1>"
 		"$<$<CONFIG:Debug>:_DEBUG>"
 	)
+endif()
+
+target_link_libraries(${TARGET_NAME} PRIVATE cpputils_build_options)
+
+if (MSVC)
+	target_compile_options(${TARGET_NAME} PRIVATE $<$<CONFIG:Debug>:/JMC>)
 endif()
