@@ -86,7 +86,7 @@ Detects whether the current process is being debugged on Windows and `/proc`-bas
 | Header | Facility |
 |---|---|
 | `timing/ctimeelapsed.h` | Pauseable/resumable steady-clock stopwatch with arbitrary `std::chrono` result units and nanosecond/microsecond/millisecond shortcuts. |
-| `timing/profiler.h` | Opt-out lightweight timeline marks, RAII scope timing, and named accumulating samples with a pluggable log sink. The profiler is intentionally single-threaded. |
+| `timing/profiler.h` | Opt-in (`PROFILING_ENABLED`) lightweight timeline marks, RAII scope timing, and named accumulating samples with a pluggable log sink. Accumulators are thread-safe; marks and scopes are single-threaded. |
 | `system/timing.h` | Millisecond elapsed-time clock (monotonic on Windows/Linux, wall-clock fallback elsewhere) and direct timestamp-counter access; the ARM counter helper is suitable only as thread-local entropy, not cross-core timing. |
 
 ### Hashing and statistics

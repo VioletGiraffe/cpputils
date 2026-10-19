@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <format>
+#include <mutex>
 #include <string>
 
 namespace {
@@ -31,6 +32,13 @@ std::deque<Profiler::Accumulator>& counters()
 {
 	static std::deque<Profiler::Accumulator> allCounters;
 	return allCounters;
+}
+
+// Guards the counters() container; an accumulator's own values are atomic.
+std::mutex& countersMutex()
+{
+	static std::mutex mutex;
+	return mutex;
 }
 
 void log(const std::string& message)
@@ -77,12 +85,15 @@ Scope::~Scope()
 
 void Accumulator::report() const
 {
+	const uint64_t ns = _ns.load(std::memory_order_relaxed);
+	const uint64_t calls = _calls.load(std::memory_order_relaxed);
 	log(std::format("@{:9.2f} ms  {:9.2f} ms  {}  ({} calls, {:.2f} us each)", timeline().nsElapsed() / 1e6,
-		_ns / 1e6, _name, _calls, _calls > 0 ? (_ns / 1000.0) / static_cast<double>(_calls) : 0.0));
+		ns / 1e6, _name, calls, calls > 0 ? (ns / 1000.0) / static_cast<double>(calls) : 0.0));
 }
 
 Accumulator& counter(std::string_view name)
 {
+	std::lock_guard lock{ countersMutex() };
 	for (Accumulator& existing : counters())
 	{
 		// string_view on the left: the reversed form needs C++20's rewritten candidates to compile.
@@ -95,12 +106,14 @@ Accumulator& counter(std::string_view name)
 
 void resetCounters()
 {
+	std::lock_guard lock{ countersMutex() };
 	for (Accumulator& accumulator : counters())
 		accumulator.reset();
 }
 
 void reportCounters()
 {
+	std::lock_guard lock{ countersMutex() };
 	for (const Accumulator& accumulator : counters())
 		accumulator.report();
 }

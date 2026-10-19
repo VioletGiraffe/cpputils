@@ -1,25 +1,22 @@
 #pragma once
 
 // Scoped timing helper: a timeline of marks, RAII scope timers, and named accumulators for per-iteration costs.
-// Cheap enough to leave in a release build (~50 ns per sample), so a profile can be collected from a shipped
+// Cheap enough to enable in a release build (~50 ns per sample), so a profile can be collected from a shipped
 // binary without a profiler attached - but for the same reason it is not honest about intervals below ~1 us.
 //
+// The PROFILE_* macros compile to nothing unless PROFILING_ENABLED is defined.
 // Output goes nowhere until setLoggingFunc() installs a sink.
 //
-// Single-threaded. Counters are unsynchronized and the scope depth is a plain global, so sampling the same
-// counter from two threads races and loses counts; the magic static in PROFILE_SAMPLE makes only the call
-// site's own initialization safe, not the registry it touches.
+// Accumulators and the counter registry are thread-safe.
+// mark() and Scope are single-threaded: the previous mark and the scope depth are plain globals.
 
 #include "ctimeelapsed.h"
 
+#include <atomic>
 #include <functional>
 #include <stdint.h>
 #include <string>
 #include <string_view>
-
-#ifndef PROFILING_ENABLED
-	#define PROFILING_ENABLED 1
-#endif
 
 namespace Profiler {
 
@@ -60,8 +57,8 @@ public:
 
 	void reset() noexcept
 	{
-		_ns = 0;
-		_calls = 0;
+		_ns.store(0, std::memory_order_relaxed);
+		_calls.store(0, std::memory_order_relaxed);
 	}
 
 	void report() const;
@@ -77,8 +74,8 @@ public:
 
 		~Sample()
 		{
-			_accumulator._ns += _timer.nsElapsed();
-			++_accumulator._calls;
+			_accumulator._ns.fetch_add(_timer.nsElapsed(), std::memory_order_relaxed);
+			_accumulator._calls.fetch_add(1, std::memory_order_relaxed);
 		}
 
 		Sample(const Sample&) = delete;
@@ -91,8 +88,8 @@ public:
 
 private:
 	std::string _name;
-	uint64_t _ns = 0;
-	uint64_t _calls = 0;
+	std::atomic<uint64_t> _ns{ 0 };
+	std::atomic<uint64_t> _calls{ 0 };
 };
 
 // Creates the counter on first use. The reference stays valid for the process lifetime, so a call site can
@@ -112,7 +109,7 @@ void reportCounters();
 	static Profiler::Accumulator& PROFILER_CONCAT(_profilerCounter, id) = Profiler::counter(name); \
 	Profiler::Accumulator::Sample PROFILER_CONCAT(_profilerSample, id) { PROFILER_CONCAT(_profilerCounter, id) }
 
-#if PROFILING_ENABLED
+#ifdef PROFILING_ENABLED
 	#define PROFILE_MARK(what)   Profiler::mark(what)
 	#define PROFILE_SCOPE(what)  Profiler::Scope PROFILER_CONCAT(_profilerScope, __COUNTER__) { what }
 	#define PROFILE_SAMPLE(name) PROFILER_SAMPLE_IMPL(name, __COUNTER__)
