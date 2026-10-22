@@ -4,7 +4,6 @@ HEADERS += \
     $$PWD/cperiodicexecutionthread.h \
     $$PWD/cthreadpool.h \
     $$PWD/cinterruptablethread.h \
-    $$PWD/simplethread.h \
     $$PWD/thread_helpers.h
 
 SOURCES += \
