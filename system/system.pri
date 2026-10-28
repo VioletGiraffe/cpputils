@@ -3,13 +3,15 @@ HEADERS += \
 	$$PWD/consoleapplicationexithandler.h \
 	$$PWD/timing.h \
 	$$PWD/win_utils.hpp \
-	$$PWD/storagespeed.hpp
+	$$PWD/storagespeed.hpp \
+	$$PWD/cpuinfo.hpp
 
 SOURCES += \
 	$$PWD/processfilepath.cpp \
 	$$PWD/consoleapplicationexithandler.cpp \
 	$$PWD/timing.cpp \
-	$$PWD/storagespeed.cpp
+	$$PWD/storagespeed.cpp \
+	$$PWD/cpuinfo.cpp
 
 win*{
 	SOURCES += \
