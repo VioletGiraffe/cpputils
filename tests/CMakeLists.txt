@@ -11,6 +11,7 @@ add_executable(${TARGET_NAME}
 	test-app/cinterruptablethread_tests.cpp
 	test-app/execution_queue_tests.cpp
 	test-app/memory_functions_tests.cpp
+	test-app/storagespeed_tests.cpp
 	test-app/system_tests.cpp
 	test-app/thread_pool_tests.cpp
 )

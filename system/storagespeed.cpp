@@ -1,9 +1,144 @@
 #include "storagespeed.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <mutex>
+#include <sstream>
 #include <utility>
 #include <vector>
+
+static bool isWithinFolder(const std::string_view path, const std::string_view folder)
+{
+	return path.starts_with(folder) && (path.size() == folder.size() || folder.ends_with('/') || path[folder.size()] == '/');
+}
+
+// mountinfo writes a space, tab, newline or backslash in a mount point as an octal escape: \040, \011, \012, \134
+static std::string unescapedMountPoint(const std::string_view escaped)
+{
+	const auto isOctalDigit = [](const char c) { return c >= '0' && c <= '7'; };
+	std::string result;
+	result.reserve(escaped.size());
+	for (size_t i = 0; i < escaped.size(); ++i)
+	{
+		if (escaped[i] == '\\' && i + 3 < escaped.size() && isOctalDigit(escaped[i + 1]) && isOctalDigit(escaped[i + 2]) && isOctalDigit(escaped[i + 3]))
+		{
+			result.push_back(static_cast<char>((escaped[i + 1] - '0') * 64 + (escaped[i + 2] - '0') * 8 + (escaped[i + 3] - '0')));
+			i += 3;
+		}
+		else
+			result.push_back(escaped[i]);
+	}
+	return result;
+}
+
+// An allowlist: an unknown type, remote or not, only loses symlink resolution.
+// autofs is excluded: reading a path on it can trigger a network mount.
+static bool isLocalFileSystemType(const std::string_view type)
+{
+	static constexpr std::string_view localTypes[]{
+		"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "jfs", "reiserfs", "zfs", "bcachefs", "nilfs2",
+		"vfat", "msdos", "exfat", "ntfs", "ntfs3", "fuseblk", "hfs", "hfsplus", "udf", "iso9660", "squashfs", "erofs",
+		"overlay", "tmpfs", "ramfs", "devtmpfs", "devpts", "proc", "sysfs"
+	};
+	return std::find(std::begin(localTypes), std::end(localTypes), type) != std::end(localTypes);
+}
+
+static std::string lexicallyNormal(const std::string& path)
+{
+	return std::filesystem::path{ path }.lexically_normal().generic_string();
+}
+
+namespace storage_speed_detail {
+
+std::vector<Mount> parseMountInfo(const std::string_view mountInfo)
+{
+	std::vector<Mount> mounts;
+	std::istringstream lines{ std::string{ mountInfo } };
+	for (std::string line; std::getline(lines, line);)
+	{
+		// Mount ID, parent ID, major:minor, root, mount point, options, optional fields, "-", type, source, super options
+		std::istringstream fields{ line };
+		std::string mountId, parentId, device, root, mountPoint, field, type;
+		if (!(fields >> mountId >> parentId >> device >> root >> mountPoint))
+			continue;
+		while (fields >> field && field != "-") {}
+		if (field != "-" || !(fields >> type))
+			continue;
+
+		mounts.push_back({ unescapedMountPoint(mountPoint), device, isLocalFileSystemType(type) });
+	}
+	return mounts;
+}
+
+std::vector<Firmlink> parseFirmlinks(const std::string_view firmlinks, const std::string_view dataVolumeRoot)
+{
+	std::vector<Firmlink> result;
+	std::istringstream lines{ std::string{ firmlinks } };
+	for (std::string line; std::getline(lines, line);)
+	{
+		// "<path>\t<target relative to the data volume>"
+		const size_t tab = line.find('\t');
+		if (!line.starts_with('/') || tab == std::string::npos || tab + 1 == line.size())
+			continue;
+		result.push_back({ line.substr(0, tab), std::string{ dataVolumeRoot } + '/' + line.substr(tab + 1) });
+	}
+	return result;
+}
+
+std::string canonicalPath(const std::string_view path, const std::vector<Firmlink>& firmlinks)
+{
+	const Firmlink* match = nullptr;
+	for (const Firmlink& firmlink : firmlinks)
+	{
+		if (isWithinFolder(path, firmlink.path) && (!match || firmlink.path.size() > match->path.size()))
+			match = &firmlink;
+	}
+	return match ? match->target + std::string{ path.substr(match->path.size()) } : std::string{ path };
+}
+
+const Mount* mountForPath(const std::vector<Mount>& mounts, const std::string_view path)
+{
+	const Mount* match = nullptr;
+	for (const Mount& mount : mounts)
+	{
+		if (isWithinFolder(path, mount.mountPoint) && (!match || mount.mountPoint.size() >= match->mountPoint.size()))
+			match = &mount;
+	}
+	return match;
+}
+
+std::string resolveLocalSymlinks(std::string path, const std::vector<Mount>& mounts, const std::vector<Firmlink>& firmlinks,
+	const std::function<std::string(const std::string&)>& readLinkTarget)
+{
+	int hopsLeft = 40; // Linux's own limit on links in one lookup
+	// path[0, componentStart) holds no links; a component starts after each '/'
+	for (size_t componentStart = 1; componentStart < path.size();)
+	{
+		const size_t slash = path.find('/', componentStart);
+		const size_t componentEnd = slash == std::string::npos ? path.size() : slash;
+		const std::string prefix = path.substr(0, componentEnd);
+		// The mount of the prefix itself: a remote mount point's own entry is read from the remote side
+		const Mount* mount = mountForPath(mounts, prefix);
+		if (!mount || !mount->local)
+			break;
+
+		const std::string target = readLinkTarget(prefix);
+		if (target.empty())
+		{
+			componentStart = componentEnd + 1;
+			continue;
+		}
+		if (--hopsLeft == 0)
+			break;
+
+		const std::string linkedPath = target.starts_with('/') ? target : path.substr(0, componentStart) + target;
+		path = canonicalPath(lexicallyNormal(linkedPath + path.substr(componentEnd)), firmlinks);
+		componentStart = 1; // The target can hold links of its own
+	}
+	return path;
+}
+
+} // namespace storage_speed_detail
 
 #ifdef _WIN32
 
@@ -51,6 +186,24 @@ static bool hasPathPrefix(const std::wstring_view path, const std::wstring_view 
 {
 	return path.size() >= prefix.size()
 		&& CompareStringOrdinal(path.data(), static_cast<int>(prefix.size()), prefix.data(), static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL;
+}
+
+// \\server\share and \\?\UNC\server\share; \\?\ and \\.\ paths to local volumes and devices are not UNC
+static bool isUncPath(const std::wstring_view path)
+{
+	if (hasPathPrefix(path, L"\\\\?\\UNC\\"))
+		return true;
+	return path.starts_with(L"\\\\") && !path.starts_with(L"\\\\?\\") && !path.starts_with(L"\\\\.\\");
+}
+
+// "X:\" for a path on drive X, also in the \\?\X:\ form; empty otherwise
+static std::wstring driveRoot(std::wstring_view path)
+{
+	if (path.starts_with(L"\\\\?\\"))
+		path.remove_prefix(4);
+	const bool hasDriveLetter = path.size() >= 2 && path[1] == L':'
+		&& ((path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z'));
+	return hasDriveLetter ? std::wstring{ path[0], L':', L'\\' } : std::wstring{};
 }
 
 static std::vector<VolumeMount> enumerateVolumeMounts()
@@ -103,9 +256,8 @@ static void assignVolumeKey(VolumeKey& key, const std::wstring& mountPath, const
 	key.guidPath = guidPath;
 }
 
-static bool volumeKeyFromMountTable(const std::filesystem::path& path, VolumeKey& key)
+static bool volumeKeyFromMountTable(const std::wstring& normalizedPath, VolumeKey& key)
 {
-	const std::wstring normalizedPath = normalizedWindowsPath(path.native());
 	VolumeMountTable& table = volumeMountTable();
 	std::lock_guard lock{ table.mutex };
 
@@ -150,10 +302,22 @@ static bool volumeKeyFromSystem(const std::filesystem::path& path, VolumeKey& ke
 
 static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
 {
-	if (volumeKeyFromMountTable(path, key))
+	// Only local drives are looked up: the lookup accesses the path, which blocks for the network timeout on an unreachable share.
+	std::error_code ec;
+	const std::wstring normalizedPath = normalizedWindowsPath(std::filesystem::absolute(path, ec).native());
+	if (ec || isUncPath(normalizedPath))
+		return false;
+	if (const std::wstring root = driveRoot(normalizedPath); !root.empty())
+	{
+		const UINT driveType = GetDriveTypeW(root.c_str());
+		if (driveType != DRIVE_FIXED && driveType != DRIVE_RAMDISK)
+			return false;
+	}
+
+	if (volumeKeyFromMountTable(normalizedPath, key))
 		return true;
 
-	if (!volumeKeyFromSystem(path, key))
+	if (!volumeKeyFromSystem(normalizedPath, key))
 		return false;
 
 	if (!key.guidPath.empty())
@@ -214,22 +378,29 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey& volume)
 
 #elif defined __linux__
 
-#include <sys/stat.h>
 #include <sys/sysmacros.h>
 
+#include <cstdio>
 #include <fstream>
 #include <stdint.h>
-#include <string>
 
 using VolumeKey = uint64_t; // st_dev
 
-static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
+static std::vector<storage_speed_detail::Mount> currentMounts(const std::vector<storage_speed_detail::Firmlink>& /*firmlinks*/)
 {
-	struct stat st;
-	if (::stat(path.c_str(), &st) != 0)
+	std::ifstream file{ "/proc/self/mountinfo" };
+	std::ostringstream contents;
+	contents << file.rdbuf();
+	return storage_speed_detail::parseMountInfo(contents.str());
+}
+
+static bool volumeKeyFromDevice(const std::string& device, VolumeKey& key)
+{
+	unsigned int deviceMajor = 0, deviceMinor = 0;
+	if (std::sscanf(device.c_str(), "%u:%u", &deviceMajor, &deviceMinor) != 2)
 		return false;
 
-	key = static_cast<VolumeKey>(st.st_dev);
+	key = static_cast<VolumeKey>(makedev(deviceMajor, deviceMinor));
 	return true;
 }
 
@@ -266,15 +437,32 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey dev)
 
 #include <string>
 
-using VolumeKey = std::string; // The mount's BSD device name from statfs, e.g. "/dev/disk3s1"
+using VolumeKey = std::string; // The mount's BSD device name, e.g. "/dev/disk3s1"
 
-static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
+static std::vector<storage_speed_detail::Mount> currentMounts(const std::vector<storage_speed_detail::Firmlink>& firmlinks)
 {
-	struct statfs fsInfo;
-	if (::statfs(path.c_str(), &fsInfo) != 0)
-		return false;
+	// MNT_NOWAIT: the kernel's cached list, without waiting on any file system.
+	// getfsstat, not getmntinfo: getmntinfo reuses one buffer across calls, so it is not thread-safe.
+	std::vector<storage_speed_detail::Mount> result;
+	const int mountCount = ::getfsstat(nullptr, 0, MNT_NOWAIT);
+	if (mountCount <= 0)
+		return result;
+	std::vector<struct statfs> mounts(static_cast<size_t>(mountCount) + 8); // Room for mounts added between the two calls
+	const int filledCount = ::getfsstat(mounts.data(), static_cast<int>(mounts.size() * sizeof(struct statfs)), MNT_NOWAIT);
 
-	key = fsInfo.f_mntfromname;
+	for (int i = 0; i < filledCount; ++i)
+	{
+		const struct statfs& mount = mounts[static_cast<size_t>(i)];
+		// autofs is excluded: reading a path on it can trigger a network mount
+		const bool local = (mount.f_flags & MNT_LOCAL) != 0 && std::string_view{ mount.f_fstypename } != "autofs";
+		result.push_back({ storage_speed_detail::canonicalPath(mount.f_mntonname, firmlinks), mount.f_mntfromname, local });
+	}
+	return result;
+}
+
+static bool volumeKeyFromDevice(const std::string& device, VolumeKey& key)
+{
+	key = device;
 	return true;
 }
 
@@ -333,6 +521,66 @@ static StorageSpeed queryVolumeSpeed(const VolumeKey& deviceName)
 
 	IOObjectRelease(media);
 	return result;
+}
+
+#endif
+
+#if defined __linux__ || defined __APPLE__
+
+#include <climits>
+#include <fstream>
+#include <unistd.h>
+
+// Lexical: resolving symlinks would access the path
+static bool lexicallyAbsolutePath(const std::filesystem::path& path, std::string& absolutePath)
+{
+	std::error_code ec;
+	absolutePath = std::filesystem::absolute(path, ec).lexically_normal().native();
+	return !ec;
+}
+
+// Empty when path is not a symlink
+static std::string symlinkTarget(const std::string& path)
+{
+	char target[PATH_MAX];
+	const ssize_t length = ::readlink(path.c_str(), target, sizeof(target));
+	return length > 0 && static_cast<size_t>(length) < sizeof(target) ? std::string(target, static_cast<size_t>(length)) : std::string{};
+}
+
+// Empty except on macOS, where /Users and other system folders are firmlinks into the data volume
+static const std::vector<storage_speed_detail::Firmlink>& systemFirmlinks()
+{
+#ifdef __APPLE__
+	static const std::vector<storage_speed_detail::Firmlink> firmlinks = [] {
+		std::ifstream file{ "/usr/share/firmlinks" };
+		std::ostringstream contents;
+		contents << file.rdbuf();
+		return storage_speed_detail::parseFirmlinks(contents.str(), "/System/Volumes/Data");
+	}();
+#else
+	static const std::vector<storage_speed_detail::Firmlink> firmlinks;
+#endif
+	return firmlinks;
+}
+
+std::string storage_speed_detail::volumeDeviceForPath(const std::filesystem::path& path)
+{
+	// From the mount tables, not stat() or statfs() on the path: those access it, which blocks on a hung network mount
+	std::string absolutePath;
+	if (!lexicallyAbsolutePath(path, absolutePath))
+		return {};
+
+	const std::vector<Firmlink>& firmlinks = systemFirmlinks();
+	const std::vector<Mount> mounts = currentMounts(firmlinks);
+	const std::string resolvedPath = resolveLocalSymlinks(canonicalPath(absolutePath, firmlinks), mounts, firmlinks, symlinkTarget);
+	const Mount* mount = mountForPath(mounts, resolvedPath);
+	return mount ? mount->device : std::string{};
+}
+
+static bool volumeKeyForPath(const std::filesystem::path& path, VolumeKey& key)
+{
+	const std::string device = storage_speed_detail::volumeDeviceForPath(path);
+	return !device.empty() && volumeKeyFromDevice(device, key);
 }
 
 #endif
