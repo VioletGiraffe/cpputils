@@ -3,6 +3,7 @@ HEADERS += \
 	$$PWD/consoleapplicationexithandler.h \
 	$$PWD/timing.h \
 	$$PWD/win_utils.hpp \
+	$$PWD/shellcontextmenu.hpp \
 	$$PWD/storagespeed.hpp
 
 SOURCES += \
@@ -13,5 +14,6 @@ SOURCES += \
 
 win*{
 	SOURCES += \
-		$$PWD/win_utils.cpp
+		$$PWD/win_utils.cpp \
+		$$PWD/shellcontextmenu.cpp
 }

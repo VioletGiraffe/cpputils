@@ -52,6 +52,7 @@ target_sources(${TARGET_NAME} PRIVATE
 if (WIN32)
 	target_sources(${TARGET_NAME} PRIVATE
 		system/win_utils.cpp
+		system/shellcontextmenu.cpp
 	)
 endif()
 
