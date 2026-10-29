@@ -521,6 +521,44 @@ TEST_CASE("Destruction with a busy worker and a queued backlog", "[threadpool]")
 	REQUIRE(backlogRun == 0);
 }
 
+TEST_CASE("Abandoning shutdown does not wait for a running task", "[threadpool]")
+{
+	bool abandonExplicitly = false;
+	SECTION("by the destructor's policy") {}
+	SECTION("by abandonAllThreads() before a waiting destructor") { abandonExplicitly = true; }
+
+	// The blocked task co-owns everything it touches, as abandonAllThreads() requires.
+	auto started = std::make_shared<std::atomic_bool>(false);
+	auto finished = std::make_shared<std::promise<void>>();
+	auto backlogRun = std::make_shared<std::atomic_int>(0);
+	std::future<void> finishedFuture = finished->get_future();
+	std::promise<void> release;
+
+	const auto start = std::chrono::steady_clock::now();
+	{
+		CThreadPool pool(1, "Test thread pool " STRINGIFY_ARGUMENT(__LINE__),
+			abandonExplicitly ? CThreadPool::ShutdownPolicy::WaitForRunningTasks : CThreadPool::ShutdownPolicy::AbandonRunningTasks);
+		pool.enqueue([started, released = release.get_future().share(), finished] {
+			*started = true;
+			released.wait_for(std::chrono::seconds(3)); // Bounded: a shutdown that waits fails the timing check instead of hanging
+			finished->set_value();
+		});
+		while (!*started)
+			std::this_thread::yield();
+
+		for (int i = 0; i < 50; ++i)
+			pool.enqueue([backlogRun] { ++*backlogRun; });
+
+		if (abandonExplicitly)
+			pool.abandonAllThreads();
+	}
+	CHECK(elapsedMs(start) < 1000);
+
+	release.set_value();
+	REQUIRE(finishedFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+	REQUIRE(*backlogRun == 0);
+}
+
 TEST_CASE("retire()", "[threadpool]")
 {
 	// A single-thread pool has one lane, so enqueue order is execution order - the only way to deterministically

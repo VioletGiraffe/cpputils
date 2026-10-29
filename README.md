@@ -77,7 +77,7 @@ Detects whether the current process is being debugged on Windows and `/proc`-bas
 | `threading/cexecutionqueue.h` | Thread-safe queue of move-only callbacks for deferred or cross-thread execution. A tag replaces older queued work with the same tag; execution can consume one item or the entry-time backlog and contains task exceptions. |
 | `threading/cinterruptablethread.h` | Named owned thread whose payload receives a cancellation flag; destruction requests cancellation and joins, and uncaught payload exceptions are logged. |
 | `threading/cperiodicexecutionthread.h` | Named worker that runs a replaceable callback at a fixed period, with optional startup delay plus non-blocking pause/resume and terminating join. |
-| `threading/cthreadpool.h` | Work-stealing pool with fire-and-forget tasks and completion futures, owner tags with `retire()` lifetime barriers, synchronous/async parallel index loops, queue metrics, and optional backlog draining at shutdown. |
+| `threading/cthreadpool.h` | Work-stealing pool with fire-and-forget tasks and completion futures, owner tags with `retire()` lifetime barriers, synchronous/async parallel index loops, queue metrics, optional backlog draining at shutdown, and an abandoning shutdown that does not wait for running tasks. |
 | `threading/thread_helpers.h` | Affinity-aware logical/physical CPU counts, heterogeneous performance classes where the OS exposes them, and portable current-thread naming. |
 
 ### Timing and measurement
