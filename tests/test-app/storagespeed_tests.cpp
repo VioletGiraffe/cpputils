@@ -512,10 +512,12 @@ TEST_CASE("macOS: /usr/share/firmlinks has the format the lookup expects", "[sto
 	CHECK(has("/Users"));
 	CHECK(has("/private"));
 	CHECK(has("/Volumes"));
+	// Some entries, such as /AppleInternal, exist only on Apple's internal builds
 	for (const Firmlink& firmlink : firmlinks)
 	{
 		INFO(firmlink.path);
-		CHECK(std::filesystem::exists(firmlink.target));
+		if (std::filesystem::exists(firmlink.path))
+			CHECK(std::filesystem::exists(firmlink.target));
 	}
 }
 #endif
