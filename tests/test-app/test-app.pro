@@ -65,4 +65,5 @@ SOURCES += \
 	cinterruptablethread_tests.cpp \
 	execution_queue_tests.cpp \
 	memory_functions_tests.cpp \
+	system_tests.cpp \
 	thread_pool_tests.cpp

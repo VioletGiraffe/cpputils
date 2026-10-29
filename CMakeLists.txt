@@ -47,6 +47,7 @@ target_sources(${TARGET_NAME} PRIVATE
 		system/consoleapplicationexithandler.cpp
 		system/timing.cpp
 		system/storagespeed.cpp
+		system/cpuinfo.cpp
 	)
 
 if (WIN32)
