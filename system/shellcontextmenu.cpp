@@ -59,15 +59,14 @@ LRESULT CALLBACK forwardMenuMessages(const HWND window, const UINT message, cons
 	return DefSubclassProc(window, message, wParam, lParam);
 }
 
-} // namespace
-
-std::function<void()> pickShellContextMenuVerb(const std::vector<std::filesystem::path>& paths, const HWND owner, const RECT& anchor)
+// Builds the context menu of paths (all in one folder) and fills its popup; null when the shell has no menu for paths.
+std::shared_ptr<ShellMenu> queryShellMenu(const std::vector<std::filesystem::path>& paths, const HWND owner, const UINT flags)
 {
-	assert_and_return_r(!paths.empty(), {});
+	assert_and_return_r(!paths.empty(), nullptr);
 
 	auto shellMenu = std::make_shared<ShellMenu>();
 	if (!shellMenu->com.success())
-		return {};
+		return nullptr;
 
 	std::vector<PIDLIST_ABSOLUTE> items;
 	EXEC_ON_SCOPE_EXIT([&items] {
@@ -80,28 +79,37 @@ std::function<void()> pickShellContextMenuVerb(const std::vector<std::filesystem
 		assert_r(path.parent_path() == paths.front().parent_path());
 		PIDLIST_ABSOLUTE item = nullptr;
 		if (FAILED(SHParseDisplayName(std::filesystem::path{ path }.make_preferred().c_str(), nullptr, &item, 0, nullptr)))
-			return {};
+			return nullptr;
 		items.push_back(item);
 	}
 
 	ComPtr<IShellFolder> folder;
 	if (FAILED(SHBindToParent(items.front(), IID_PPV_ARGS(&folder), nullptr)))
-		return {};
+		return nullptr;
 
 	std::vector<PCUITEMID_CHILD> children;
 	children.reserve(items.size());
 	for (const PIDLIST_ABSOLUTE item : items)
 		children.push_back(ILFindLastID(item));
 	if (FAILED(folder->GetUIObjectOf(owner, static_cast<UINT>(children.size()), children.data(), __uuidof(IContextMenu), nullptr, reinterpret_cast<void**>(shellMenu->menu.GetAddressOf()))))
-		return {};
+		return nullptr;
 
 	shellMenu->popup = CreatePopupMenu();
-	assert_and_return_r(shellMenu->popup, {});
+	assert_and_return_r(shellMenu->popup, nullptr);
+	if (FAILED(shellMenu->menu->QueryContextMenu(shellMenu->popup, 0, FIRST_COMMAND_ID, LAST_COMMAND_ID, flags)))
+		return nullptr;
 
+	return shellMenu;
+}
+
+} // namespace
+
+std::function<void()> pickShellContextMenuVerb(const std::vector<std::filesystem::path>& paths, const HWND owner, const RECT& anchor)
+{
 	// Shift adds the extended verbs, as in Explorer.
 	// No CMF_CANRENAME: renaming needs an Explorer view to edit the name in.
-	const UINT flags = GetKeyState(VK_SHIFT) < 0 ? CMF_EXTENDEDVERBS : CMF_NORMAL;
-	if (FAILED(shellMenu->menu->QueryContextMenu(shellMenu->popup, 0, FIRST_COMMAND_ID, LAST_COMMAND_ID, flags)))
+	const auto shellMenu = queryShellMenu(paths, owner, GetKeyState(VK_SHIFT) < 0 ? CMF_EXTENDEDVERBS : CMF_NORMAL);
+	if (!shellMenu)
 		return {};
 
 	SetWindowSubclass(owner, forwardMenuMessages, 0, reinterpret_cast<DWORD_PTR>(shellMenu->menu.Get()));
@@ -127,5 +135,20 @@ std::function<void()> pickShellContextMenuVerb(const std::vector<std::filesystem
 	return [shellMenu, invocation]() mutable {
 		shellMenu->menu->InvokeCommand(reinterpret_cast<CMINVOKECOMMANDINFO*>(&invocation));
 	};
+}
+
+bool invokeShellVerb(const std::vector<std::filesystem::path>& paths, const HWND owner, const char* const verb)
+{
+	// Queried even though no menu is shown: some handlers recognize their verbs only after QueryContextMenu.
+	const auto shellMenu = queryShellMenu(paths, owner, CMF_NORMAL);
+	if (!shellMenu)
+		return false;
+
+	CMINVOKECOMMANDINFO invocation{};
+	invocation.cbSize = sizeof(invocation);
+	invocation.hwnd = owner;
+	invocation.lpVerb = verb;
+	invocation.nShow = SW_SHOWNORMAL;
+	return SUCCEEDED(shellMenu->menu->InvokeCommand(&invocation));
 }
 #endif

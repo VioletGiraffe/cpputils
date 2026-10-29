@@ -104,7 +104,7 @@ Detects whether the current process is being debugged on Windows and `/proc`-bas
 | `system/consoleapplicationexithandler.h` | Registers a callback for Windows console close, Ctrl-C, break, logoff, and shutdown events. Other platforms currently retain the callback but install no OS handler. |
 | `system/storagespeed.hpp` | Thread-safe, per-volume cached classification into fast random-access storage or slow/unknown storage, using native Windows, Linux, and macOS metadata. |
 | `system/win_utils.hpp` | Windows-only COM initialization RAII and readable messages for Win32 error codes, `GetLastError()`, and `HRESULT`; definitions collapse to a no-op COM macro elsewhere. |
-| `system/shellcontextmenu.hpp` | Windows-only: shows Explorer's context menu for files and folders in one folder, opening beside an anchor rectangle like a submenu, and returns the picked verb for the caller to run when ready. |
+| `system/shellcontextmenu.hpp` | Windows-only: shows Explorer's context menu for files and folders in one folder, opening beside an anchor rectangle like a submenu, and returns the picked verb for the caller to run when ready; also runs a verb by its canonical name ("copy", "paste", ...) without a menu. |
 
 ### Language and memory helpers
 
