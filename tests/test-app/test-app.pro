@@ -62,6 +62,7 @@ LIBS += \
 
 SOURCES += \
 	main.cpp \
+	cbackgroundtask_tests.cpp \
 	cinterruptablethread_tests.cpp \
 	execution_queue_tests.cpp \
 	memory_functions_tests.cpp \

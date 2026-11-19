@@ -1,4 +1,5 @@
 HEADERS += \
+    $$PWD/cbackgroundtask.h \
     $$PWD/cconsumerblockingqueue.h \
     $$PWD/cexecutionqueue.h \
     $$PWD/cperiodicexecutionthread.h \

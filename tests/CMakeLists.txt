@@ -8,6 +8,7 @@ set(TARGET_NAME tests)
 # Listed in the order of SOURCES in test-app/test-app.pro, which must hold the same files.
 add_executable(${TARGET_NAME}
 	test-app/main.cpp
+	test-app/cbackgroundtask_tests.cpp
 	test-app/cinterruptablethread_tests.cpp
 	test-app/execution_queue_tests.cpp
 	test-app/memory_functions_tests.cpp
