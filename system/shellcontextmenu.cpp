@@ -8,8 +8,10 @@
 #include <CommCtrl.h>
 #include <ShlObj.h>
 #include <shellapi.h> // SEE_MASK_UNICODE, which CMIC_MASK_UNICODE expands to
+#include <Shlwapi.h> // IQueryAssociations
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <memory>
 
 #pragma comment(lib, "comctl32.lib")
@@ -59,7 +61,68 @@ LRESULT CALLBACK forwardMenuMessages(const HWND window, const UINT message, cons
 	return DefSubclassProc(window, message, wParam, lParam);
 }
 
-// Builds the context menu of paths (all in one folder) and fills its popup; null when the shell has no menu for paths.
+[[nodiscard]] bool itemsShareParentFolder(const std::vector<PIDLIST_ABSOLUTE>& items)
+{
+	const PIDLIST_ABSOLUTE parent = ILCloneFull(items.front());
+	if (!parent)
+		return false;
+	EXEC_ON_SCOPE_EXIT([parent] { ILFree(parent); });
+
+	ILRemoveLastID(parent);
+	return std::all_of(items.cbegin(), items.cend(), [parent](const PIDLIST_ABSOLUTE item) { return ILIsParent(parent, item, TRUE) != FALSE; });
+}
+
+// Requires itemsShareParentFolder: every item is resolved inside the first item's folder.
+ComPtr<IContextMenu> createOneFolderMenu(const std::vector<PIDLIST_ABSOLUTE>& items, const HWND owner)
+{
+	ComPtr<IShellFolder> folder;
+	if (FAILED(SHBindToParent(items.front(), IID_PPV_ARGS(&folder), nullptr)))
+		return nullptr;
+
+	std::vector<PCUITEMID_CHILD> children;
+	children.reserve(items.size());
+	for (const PIDLIST_ABSOLUTE item : items)
+		children.push_back(ILFindLastID(item));
+
+	ComPtr<IContextMenu> menu;
+	if (FAILED(folder->GetUIObjectOf(owner, static_cast<UINT>(children.size()), children.data(), __uuidof(IContextMenu), nullptr, reinterpret_cast<void**>(menu.GetAddressOf()))))
+		return nullptr;
+	return menu;
+}
+
+// The desktop folder resolves absolute ID lists, so the items can be in any folders.
+// Undocumented: DEFCONTEXTMENU::apidl is declared as an array of child IDs.
+// The first item's file type supplies the verbs.
+ComPtr<IContextMenu> createMultiFolderMenu(const std::vector<PIDLIST_ABSOLUTE>& items, const HWND owner)
+{
+	ComPtr<IShellFolder> firstItemFolder;
+	PCUITEMID_CHILD firstItem = nullptr;
+	if (FAILED(SHBindToParent(items.front(), IID_PPV_ARGS(&firstItemFolder), &firstItem)))
+		return nullptr;
+
+	ComPtr<IQueryAssociations> associations;
+	if (FAILED(firstItemFolder->GetUIObjectOf(owner, 1, &firstItem, __uuidof(IQueryAssociations), nullptr, reinterpret_cast<void**>(associations.GetAddressOf()))))
+		return nullptr;
+
+	ComPtr<IShellFolder> desktop;
+	if (FAILED(SHGetDesktopFolder(&desktop)))
+		return nullptr;
+
+	std::vector<PCUITEMID_CHILD> absoluteItems(items.cbegin(), items.cend());
+	const DEFCONTEXTMENU definition{
+		.hwnd = owner,
+		.psf = desktop.Get(),
+		.cidl = static_cast<UINT>(absoluteItems.size()),
+		.apidl = absoluteItems.data(),
+		.punkAssociationInfo = associations.Get()
+	};
+	ComPtr<IContextMenu> menu;
+	if (FAILED(SHCreateDefaultContextMenu(&definition, IID_PPV_ARGS(&menu))))
+		return nullptr;
+	return menu;
+}
+
+// Builds the context menu of paths and fills its popup; null when the shell has no menu for paths.
 std::shared_ptr<ShellMenu> queryShellMenu(const std::vector<std::filesystem::path>& paths, const HWND owner, const UINT flags)
 {
 	assert_and_return_r(!paths.empty(), nullptr);
@@ -76,22 +139,14 @@ std::shared_ptr<ShellMenu> queryShellMenu(const std::vector<std::filesystem::pat
 	items.reserve(paths.size());
 	for (const std::filesystem::path& path : paths)
 	{
-		assert_r(path.parent_path() == paths.front().parent_path());
 		PIDLIST_ABSOLUTE item = nullptr;
 		if (FAILED(SHParseDisplayName(std::filesystem::path{ path }.make_preferred().c_str(), nullptr, &item, 0, nullptr)))
 			return nullptr;
 		items.push_back(item);
 	}
 
-	ComPtr<IShellFolder> folder;
-	if (FAILED(SHBindToParent(items.front(), IID_PPV_ARGS(&folder), nullptr)))
-		return nullptr;
-
-	std::vector<PCUITEMID_CHILD> children;
-	children.reserve(items.size());
-	for (const PIDLIST_ABSOLUTE item : items)
-		children.push_back(ILFindLastID(item));
-	if (FAILED(folder->GetUIObjectOf(owner, static_cast<UINT>(children.size()), children.data(), __uuidof(IContextMenu), nullptr, reinterpret_cast<void**>(shellMenu->menu.GetAddressOf()))))
+	shellMenu->menu = itemsShareParentFolder(items) ? createOneFolderMenu(items, owner) : createMultiFolderMenu(items, owner);
+	if (!shellMenu->menu)
 		return nullptr;
 
 	shellMenu->popup = CreatePopupMenu();
